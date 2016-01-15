@@ -11,7 +11,7 @@ import matplotlib.pylab as plt
 
 # Define the Orr-Somerfeld problem in Dedalus: 
 
-z = de.Chebyshev('z',32)
+z = de.Chebyshev('z',50)
 d = de.Domain([z])
 
 orr_somerfeld = de.EVP(d,['w','wz','wzz','wzzz'],'sigma')
