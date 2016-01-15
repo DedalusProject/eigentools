@@ -42,7 +42,10 @@ cf = CriticalFinder(shim)
 start = time.time()
 cf.grid_generator(5500,6000,0.95,1.15,40,40)
 end = time.time()
+print("grid generation time: {:10.5f} sec".format(end-start))
 
 cf.root_finder()
 crit = cf.crit_finder()
-print(crit)
+
+print("critical wavenumber alpha = {:10.5f}".format(crit[0]))
+print("critical Re = {:10.5f}".format(crit[1]))

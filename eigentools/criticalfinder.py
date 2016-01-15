@@ -50,6 +50,14 @@ class CriticalFinder:
                 self.roots[j] = np.nan
 
     def crit_finder(self):
+        """returns a tuple of the x value at which the minimum (critical value
+        occurs), and the y value. 
+
+        output
+        ------
+        (x_crit, y_crit) 
+
+        """
         self.root_finder()
         
         mask = np.isfinite(self.roots)
@@ -62,4 +70,4 @@ class CriticalFinder:
         bracket = [yy_root[0],yy_root[mid],yy_root[-1]]
         
         self.opt = optimize.minimize_scalar(self.root_fn,bracket=bracket)
-        return (self.opt['x'], self.opt['fun'])
+        return (self.opt['x'], np.asscalar(self.opt['fun']))
