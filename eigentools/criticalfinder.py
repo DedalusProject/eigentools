@@ -1,5 +1,20 @@
 import numpy as np
+from mpi4py import MPI
 from scipy import interpolate, optimize
+
+comm = MPI.COMM_WORLD
+
+def load_balance(nx, ny, nproc):
+# this is probably not a very good load balance for nprocs not exactly
+# equal to a square of the total grid size...
+    index = np.arange(nx*ny)
+
+    return np.array_split(index,nproc)
+
+def index2ji(index, nx):
+    j = np.int(index / nx)
+    i = index % nx
+    return j, i 
 
 class CriticalFinder:
     """CriticalFinder
@@ -18,8 +33,11 @@ class CriticalFinder:
 
     """
     
-    def __init__(self, func):
+    def __init__(self, func, comm):
         self.func = func
+        self.comm = comm
+        self.nproc = self.comm.size
+        self.rank = self.comm.rank
         
     def grid_generator(self, xmin, xmax, ymin, ymax, nx, ny):
         self.xmin = xmin
@@ -28,17 +46,34 @@ class CriticalFinder:
         self.ymax = ymax
         self.nx = nx
         self.ny = ny
-        
+
         self.yy,self.xx = np.mgrid[self.ymin:self.ymax:self.ny*1j,
                                    self.xmin:self.xmax:self.nx*1j]
         
         self.grid = np.zeros_like(self.xx)
-        
-        for j,y in enumerate(self.yy[:,0]):
-            for i,x in enumerate(self.xx[0,:]):
-                self.grid[j,i] = self.func(y,x)
+        indices = load_balance(nx, ny, self.nproc)
+        my_indices = indices[self.rank]
 
+        # work on parameters
+        local_grid = np.empty(my_indices.size,dtype='double')
 
+        for ii, index in enumerate(my_indices):
+            j, i = index2ji(index, nx)
+            x = self.xx[0,i]
+            y = self.yy[j,0]
+            local_grid[ii] = self.func(y,x)
+
+        data = np.empty(nx*ny, dtype='double')
+
+        rec_counts = np.array([s.size for s in indices])
+        displacements = np.cumsum(rec_counts) - rec_counts
+
+        comm.Gatherv(local_grid,[data,rec_counts,displacements, MPI.DOUBLE])
+
+        data = data.reshape(ny,nx)
+        comm.Bcast(data, root = 0)
+
+        self.grid = data
         self.interpolator = interpolate.interp2d(self.xx[0,:], self.yy[:,0], self.grid)
     
     def root_finder(self):

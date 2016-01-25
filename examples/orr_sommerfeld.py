@@ -2,17 +2,20 @@
 Orr-Somerfeld eigenvalue equation.
 
 """
+from mpi4py import MPI
 from eigentools import Eigenproblem, CriticalFinder
 import time
 import dedalus.public as de
 import numpy as np
 import matplotlib.pylab as plt
 
+comm = MPI.COMM_WORLD
+
 
 # Define the Orr-Somerfeld problem in Dedalus: 
 
-z = de.Chebyshev('z',50)
-d = de.Domain([z])
+z = de.Chebyshev('z',32)
+d = de.Domain([z],comm=MPI.COMM_SELF)
 
 orr_somerfeld = de.EVP(d,['w','wz','wzz','wzzz'],'sigma')
 orr_somerfeld.parameters['alpha'] = 1.
@@ -36,7 +39,7 @@ EP = Eigenproblem(orr_somerfeld)
 def shim(x,y):
     return EP.growth_rate({"alpha":x,"Re":y})
 
-cf = CriticalFinder(shim)
+cf = CriticalFinder(shim, comm)
 
 # generating the grid is the longest part
 start = time.time()
@@ -47,5 +50,6 @@ print("grid generation time: {:10.5f} sec".format(end-start))
 cf.root_finder()
 crit = cf.crit_finder()
 
-print("critical wavenumber alpha = {:10.5f}".format(crit[0]))
-print("critical Re = {:10.5f}".format(crit[1]))
+if comm.rank == 0:
+    print("critical wavenumber alpha = {:10.5f}".format(crit[0]))
+    print("critical Re = {:10.5f}".format(crit[1]))
