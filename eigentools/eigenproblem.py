@@ -19,19 +19,27 @@ class Eigenproblem():
     def process_evalues(self, ev):
         return ev[np.isfinite(ev)]
     
-    def growth_rate(self,params):
+    def growth_rate(self,params,reject=True):
         for k,v in params.items():
             vv = self.EVP.namespace[k]
             vv.value = v
         self.solve()
-        
-        return np.max(self.evalues.real)
-    
-    def spectrum(self, title='spectrum',hires=False):
-        if hires:
-            ev = self.evalues_hires
+        if reject:
+            self.reject_spurious()
+            return np.max(self.evalues_good.real)
         else:
+            return np.max(self.evalues.real)
+    
+    def spectrum(self, title='spectrum',spectype='raw'):
+        if spectype == 'raw':
             ev = self.evalues
+        elif spectype == 'hires':
+            ev = self.evalues_hires
+        elif spectype == 'good':
+            ev = self.evalues_good
+        else:
+            raise ValueError("Spectrum type is not one of {raw, hires, good}")
+
         # Color is sign of imaginary part
         colors = ["blue" for i in range(len(ev))]
         imagpos = np.where(ev.imag >= 0)
@@ -101,7 +109,6 @@ class Eigenproblem():
         return self.process_evalues(solver.eigenvalues)
 
     def discard_spurious_eigenvalues(self):
-    
         """
         Solves the linear eigenvalue problem for two different resolutions.
         Returns trustworthy eigenvalues using nearest delta, from Boyd chapter 7.
@@ -110,7 +117,6 @@ class Eigenproblem():
         # Solve the linear eigenvalue problem at two different resolutions.
         #LEV1 = self.evalues
         #LEV2 = self.evalues_hires
-    
         # Eigenvalues returned by dedalus must be multiplied by -1
         lambda1 = self.evalues #-LEV1.eigenvalues
         lambda2 = self.evalues_hires #-LEV2.eigenvalues
