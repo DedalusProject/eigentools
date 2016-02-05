@@ -14,7 +14,7 @@ comm = MPI.COMM_WORLD
 
 # Define the Orr-Somerfeld problem in Dedalus: 
 
-z = de.Chebyshev('z',32)
+z = de.Chebyshev('z',50)
 d = de.Domain([z],comm=MPI.COMM_SELF)
 
 orr_somerfeld = de.EVP(d,['w','wz','wzz','wzzz'],'sigma')
@@ -45,7 +45,8 @@ cf = CriticalFinder(shim, comm)
 start = time.time()
 cf.grid_generator(5500,6000,0.95,1.15,40,40)
 end = time.time()
-print("grid generation time: {:10.5f} sec".format(end-start))
+if comm.rank == 0:
+    print("grid generation time: {:10.5f} sec".format(end-start))
 
 cf.root_finder()
 crit = cf.crit_finder()
@@ -53,3 +54,6 @@ crit = cf.crit_finder()
 if comm.rank == 0:
     print("critical wavenumber alpha = {:10.5f}".format(crit[0]))
     print("critical Re = {:10.5f}".format(crit[1]))
+
+    cf.plot_crit()
+    cf.save_grid('orr_sommerfeld_growth_rates')
