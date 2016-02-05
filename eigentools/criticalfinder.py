@@ -1,7 +1,10 @@
 import numpy as np
 from mpi4py import MPI
+import h5py
 from scipy import interpolate, optimize
+import matplotlib.pyplot as plt
 
+from dedalus.tools.cache import CachedAttribute
 comm = MPI.COMM_WORLD
 
 def load_balance(nx, ny, nproc):
@@ -38,7 +41,7 @@ class CriticalFinder:
         self.comm = comm
         self.nproc = self.comm.size
         self.rank = self.comm.rank
-        
+
     def grid_generator(self, xmin, xmax, ymin, ymax, nx, ny):
         self.xmin = xmin
         self.xmax = xmax
@@ -74,7 +77,24 @@ class CriticalFinder:
         comm.Bcast(data, root = 0)
 
         self.grid = data
-        self.interpolator = interpolate.interp2d(self.xx[0,:], self.yy[:,0], self.grid)
+
+    @CachedAttribute
+    def interpolator(self):
+        return interpolate.interp2d(self.xx[0,:], self.yy[:,0], self.grid)
+
+    def load_grid(self, filename):
+        infile = h5py.File(filename,'r')
+        self.xx = infile['/xx'][:]
+        self.yy = infile['/yy'][:]
+        self.grid = infile['/grid'][:]
+        
+    def save_grid(self, filen):
+        if comm.rank == 0:
+            outfile = h5py.File(filen+'.h5','w')
+            outfile.create_dataset('grid',data=self.grid)
+            outfile.create_dataset('xx',data=self.xx)
+            outfile.create_dataset('yy',data=self.yy)
+            outfile.close()
     
     def root_finder(self):
         self.roots = np.zeros_like(self.yy[:,0])
@@ -106,3 +126,30 @@ class CriticalFinder:
         
         self.opt = optimize.minimize_scalar(self.root_fn,bracket=bracket)
         return (self.opt['x'], np.asscalar(self.opt['fun']))
+
+    def plot_crit(self, title='growth_rates',transpose=True):
+        """make a simple plot of the growth rates and critical curve
+
+        """
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+
+        if transpose:
+            xx = self.yy.T
+            yy = self.xx.T
+            grid = self.grid.T
+            x = self.yy[:,0]
+            y = self.roots
+        else:
+            xx = self.xx
+            yy = self.yy
+            grid = self.grid
+            x = self.roots
+            y = self.yy[:,0]
+
+        plt.pcolormesh(xx,yy,grid,cmap='inferno',vmin=-1,vmax=1)
+        plt.colorbar()
+        plt.scatter(x,y)
+        plt.ylim(yy.min(),yy.max())
+        plt.xlim(xx.min(),xx.max())
+        fig.savefig('{}.png'.format(title))
