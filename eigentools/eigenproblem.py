@@ -21,8 +21,10 @@ class Eigenproblem():
     
     def growth_rate(self,params,reject=True):
         for k,v in params.items():
+            # Dedalus workaround: must change values in two places
             vv = self.EVP.namespace[k]
             vv.value = v
+            self.EVP.parameters[k] = v
         self.solve()
         if reject:
             self.reject_spurious()
@@ -79,13 +81,13 @@ class Eigenproblem():
     def reject_spurious(self, factor=1.5):
         """may be able to pull everything out of EVP to construct a new one with higher N..."""
         self.factor = factor
+        self.solve_hires()
         evg, indx = self.discard_spurious_eigenvalues()
         self.evalues_good = evg
         self.evalues_good_index = indx
 
         
-    @CachedAttribute
-    def evalues_hires(self):
+    def solve_hires(self):
         old_evp = self.EVP
         old_d = old_evp.domain
         old_x = old_d.bases[0]
@@ -106,7 +108,7 @@ class Eigenproblem():
 
         solver = self.EVP_hires.build_solver()
         solver.solve(solver.pencils[self.pencil], rebuild_coeffs=True)
-        return self.process_evalues(solver.eigenvalues)
+        self.evalues_hires = self.process_evalues(solver.eigenvalues)
 
     def discard_spurious_eigenvalues(self):
         """
