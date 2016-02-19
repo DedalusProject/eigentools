@@ -25,13 +25,17 @@ class Eigenproblem():
             vv = self.EVP.namespace[k]
             vv.value = v
             self.EVP.parameters[k] = v
-        self.solve()
-        if reject:
-            self.reject_spurious()
-            return np.max(self.evalues_good.real)
-        else:
-            return np.max(self.evalues.real)
-    
+        try:
+            self.solve()
+            if reject:
+                self.reject_spurious()
+                return np.max(self.evalues_good.real)
+            else:
+                return np.max(self.evalues.real)
+        except np.linalg.linalg.LinAlgError:
+            print("Eigenvalue solver failed to converge for parameters {}".format(params))
+            return np.nan
+
     def spectrum(self, title='spectrum',spectype='raw'):
         if spectype == 'raw':
             ev = self.evalues
