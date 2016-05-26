@@ -14,12 +14,17 @@ class Eigenproblem():
     def solve(self, pencil=0):
         self.pencil = pencil
         self.solver.solve(self.solver.pencils[self.pencil], rebuild_coeffs=True)
-        self.evalues = self.process_evalues(self.solver.eigenvalues)
+        self.evalues = self.solver.eigenvalues
             
     def process_evalues(self, ev):
         return ev[np.isfinite(ev)]
     
     def growth_rate(self,params,reject=True):
+        """returns the growth rate, defined as the eigenvalue with the largest
+        real part. May acually be a decay rate if there is no growing mode.
+        
+        also returns the index of the fastest growing mode.
+        """
         for k,v in params.items():
             # Dedalus workaround: must change values in two places
             vv = self.EVP.namespace[k]
@@ -29,14 +34,16 @@ class Eigenproblem():
             self.solve()
             if reject:
                 self.reject_spurious()
-                return np.max(self.evalues_good.real)
+                gr_rate = np.max(self.evalues_good.real)
+                gr_indx = self.evalues_good_index[self.evalues_good.real == gr_rate]
+                return gr_rate, gr_indx[0]
             else:
                 return np.max(self.evalues.real)
         except np.linalg.linalg.LinAlgError:
             print("Eigenvalue solver failed to converge for parameters {}".format(params))
             return np.nan
 
-    def spectrum(self, title='spectrum',spectype='raw'):
+    def spectrum(self, title='eigenvalue',spectype='raw'):
         if spectype == 'raw':
             ev = self.evalues
         elif spectype == 'hires':
@@ -65,7 +72,8 @@ class Eigenproblem():
         fig = plt.figure()
         ax = fig.add_subplot(111)
         for x, y, c, s, t in zip(np.abs(ev.real), np.abs(ev.imag), colors, symbols, thickness):
-            ax.plot(x, y, s, c=c, alpha = 0.5, ms = 8, mew = t)
+            if x is not np.ma.masked:
+                ax.plot(x, y, s, c=c, alpha = 0.5, ms = 8, mew = t)
 
         # Dummy plot for legend
         ax.plot(0, 0, '+', c = "red", alpha = 0.5, mew = 2, label = r"$\gamma \geq 0$, $\omega > 0$")
@@ -80,7 +88,7 @@ class Eigenproblem():
         ax.set_xlabel(r"$\left|\gamma\right|$", size = 15)
         ax.set_ylabel(r"$\left|\omega\right|$", size = 15, rotation = 0)
 
-        fig.savefig('{}.png'.format(title))
+        fig.savefig('{}_spectrum_{}.png'.format(title,spectype))
 
     def reject_spurious(self, factor=1.5):
         """may be able to pull everything out of EVP to construct a new one with higher N..."""
@@ -112,7 +120,7 @@ class Eigenproblem():
 
         solver = self.EVP_hires.build_solver()
         solver.solve(solver.pencils[self.pencil], rebuild_coeffs=True)
-        self.evalues_hires = self.process_evalues(solver.eigenvalues)
+        self.evalues_hires = solver.eigenvalues
 
     def discard_spurious_eigenvalues(self):
         """
@@ -164,7 +172,7 @@ class Eigenproblem():
         #print(lambda1_and_indx)
         
         lambda1 = lambda1_and_indx[:, 0]
-        indx = lambda1_and_indx[:, 1]
+        indx = lambda1_and_indx[:, 1].astype(np.int)
         
         #delta_near_unsorted = delta_near[reverse_lambda1_indx]
         #lambda1[np.where((1.0/delta_near_unsorted) < 1E6)] = None

@@ -55,21 +55,16 @@ mri.add_bc("right(Bx) = 0")
 # create an Eigenproblem object
 EP = Eigenproblem(mri)
 
-gr = EP.growth_rate({})
-print("MRI corrected growth rate = {0:10.5e}".format(gr))
-EP.spectrum()
-EP.spectrum(spectype='good',title='spectrum_good')
-sys.exit()
-
 # create a shim function to translate (x, y) to the parameters for the eigenvalue problem:
 def shim(x,y):
-    return EP.growth_rate({"Q":x,"iRm":y})
+        gr, indx = EP.growth_rate({"alpha":x,"Re":y})
+    return gr
 
 cf = CriticalFinder(shim, comm)
 
 # generating the grid is the longest part
 start = time.time()
-cf.grid_generator(5500,6000,0.95,1.15,40,40)
+cf.grid_generator(4.6,5.0,0.74,0.76,4,4)
 end = time.time()
 print("grid generation time: {:10.5f} sec".format(end-start))
 
@@ -79,3 +74,6 @@ crit = cf.crit_finder()
 if comm.rank == 0:
     print("critical wavenumber alpha = {:10.5f}".format(crit[0]))
     print("critical Re = {:10.5f}".format(crit[1]))
+
+    cf.plot_crit()
+    cf.save_grid('mri_growth_rates')

@@ -37,13 +37,14 @@ EP = Eigenproblem(orr_somerfeld)
 # create a shim function to translate (x, y) to the parameters for the eigenvalue problem:
 
 def shim(x,y):
-    return EP.growth_rate({"alpha":x,"Re":y})
+    gr, indx = EP.growth_rate({"alpha":x,"Re":y})
+    return gr
 
 cf = CriticalFinder(shim, comm)
 
 # generating the grid is the longest part
 start = time.time()
-cf.grid_generator(5500,6000,0.95,1.15,40,40)
+cf.grid_generator(5500,6000,0.95,1.15,10,10)
 end = time.time()
 if comm.rank == 0:
     print("grid generation time: {:10.5f} sec".format(end-start))
