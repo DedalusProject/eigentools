@@ -112,6 +112,9 @@ class Eigenproblem():
         for k,v in old_evp.parameters.items():
             self.EVP_hires.parameters[k] = v
 
+        for k,v in old_evp.substitutions.items():
+            self.EVP_hires.substitutions[k] = v
+
         for e in old_evp.equations:
             self.EVP_hires.add_equation(e['raw_equation'])
 
