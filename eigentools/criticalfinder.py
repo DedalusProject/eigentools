@@ -114,10 +114,11 @@ class CriticalFinder:
 
         """
         self.root_finder()
-        
+        #print("my roots are", self.roots)
         mask = np.isfinite(self.roots)
         yy_root = self.yy[mask,0]
         rroot = self.roots[mask]
+        #print("interpolating over yyroot ", yy_root, "and rroot", rroot)
         self.root_fn = interpolate.interp1d(yy_root,rroot,kind='cubic')
         
         mid = yy_root.shape[0]/2
@@ -127,7 +128,7 @@ class CriticalFinder:
         self.opt = optimize.minimize_scalar(self.root_fn,bracket=bracket)
         return (self.opt['x'], np.asscalar(self.opt['fun']))
 
-    def plot_crit(self, title='growth_rates',transpose=True):
+    def plot_crit(self, title='growth_rates',transpose=True, xlabel = "", ylabel = ""):
         """make a simple plot of the growth rates and critical curve
 
         """
@@ -147,9 +148,11 @@ class CriticalFinder:
             x = self.roots
             y = self.yy[:,0]
 
-        plt.pcolormesh(xx,yy,grid,cmap='inferno',vmin=-1,vmax=1)
+        plt.pcolormesh(xx,yy,grid,cmap='autumn')#,vmin=-1,vmax=1)
         plt.colorbar()
         plt.scatter(x,y)
         plt.ylim(yy.min(),yy.max())
         plt.xlim(xx.min(),xx.max())
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
         fig.savefig('{}.png'.format(title))
