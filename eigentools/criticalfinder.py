@@ -5,7 +5,6 @@ from scipy import interpolate, optimize
 import matplotlib.pyplot as plt
 
 from dedalus.tools.cache import CachedAttribute
-comm = MPI.COMM_WORLD
 
 def load_balance(nx, ny, nproc):
 # this is probably not a very good load balance for nprocs not exactly
@@ -71,10 +70,10 @@ class CriticalFinder:
         rec_counts = np.array([s.size for s in indices])
         displacements = np.cumsum(rec_counts) - rec_counts
 
-        comm.Gatherv(local_grid,[data,rec_counts,displacements, MPI.DOUBLE])
+        self.comm.Gatherv(local_grid,[data,rec_counts,displacements, MPI.DOUBLE])
 
         data = data.reshape(ny,nx)
-        comm.Bcast(data, root = 0)
+        self.comm.Bcast(data, root = 0)
 
         self.grid = data
 
@@ -89,7 +88,7 @@ class CriticalFinder:
         self.grid = infile['/grid'][:]
         
     def save_grid(self, filen):
-        if comm.rank == 0:
+        if self.comm.rank == 0:
             outfile = h5py.File(filen+'.h5','w')
             outfile.create_dataset('grid',data=self.grid)
             outfile.create_dataset('xx',data=self.xx)
