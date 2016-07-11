@@ -36,9 +36,14 @@ class Eigenproblem():
                 self.reject_spurious()
                 gr_rate = np.max(self.evalues_good.real)
                 gr_indx = self.evalues_good_index[self.evalues_good.real == gr_rate]
-                return gr_rate, gr_indx[0]
+                freq = self.evalues_good[self.evalues_good.real == gr_rate].imag
             else:
-                return np.max(self.evalues.real)
+                gr_rate = np.max(self.evalues.real)
+                gr_indx = np.where[self.evalues.real == gr_rate][0][0]
+                freq = self.evalues[gr_index].imag
+                
+            return gr_rate, gr_indx[0], freq
+
         except np.linalg.linalg.LinAlgError:
             print("Eigenvalue solver failed to converge for parameters {}".format(params))
             return np.nan

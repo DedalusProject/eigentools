@@ -57,20 +57,20 @@ class CriticalFinder:
         my_indices = indices[self.rank]
 
         # work on parameters
-        local_grid = np.empty(my_indices.size,dtype='double')
+        local_grid = np.empty(my_indices.size,dtype='complex128')
 
         for ii, index in enumerate(my_indices):
             j, i = index2ji(index, nx)
             x = self.xx[0,i]
             y = self.yy[j,0]
-            local_grid[ii] = self.func(y,x)
+            local_grid[ii] = self.func(y,x)[0]
 
-        data = np.empty(nx*ny, dtype='double')
+        data = np.empty(nx*ny, dtype='complex128')
 
         rec_counts = np.array([s.size for s in indices])
         displacements = np.cumsum(rec_counts) - rec_counts
 
-        self.comm.Gatherv(local_grid,[data,rec_counts,displacements, MPI.DOUBLE])
+        self.comm.Gatherv(local_grid,[data,rec_counts,displacements, MPI.F_DOUBLE_COMPLEX])
 
         data = data.reshape(ny,nx)
         self.comm.Bcast(data, root = 0)
@@ -79,7 +79,7 @@ class CriticalFinder:
 
     @CachedAttribute
     def interpolator(self):
-        return interpolate.interp2d(self.xx[0,:], self.yy[:,0], self.grid)
+        return interpolate.interp2d(self.xx[0,:], self.yy[:,0], self.grid.real)
 
     def load_grid(self, filename):
         infile = h5py.File(filename,'r')
@@ -103,7 +103,7 @@ class CriticalFinder:
             except ValueError:
                 self.roots[j] = np.nan
 
-    def crit_finder(self):
+    def crit_finder(self, find_freq=False):
         """returns a tuple of the x value at which the minimum (critical value
         occurs), and the y value. 
 
@@ -125,7 +125,16 @@ class CriticalFinder:
         bracket = [yy_root[0],yy_root[mid],yy_root[-1]]
         
         self.opt = optimize.minimize_scalar(self.root_fn,bracket=bracket)
-        return (self.opt['x'], np.asscalar(self.opt['fun']))
+
+        x_crit = self.opt['x']
+        y_crit = np.asscalar(self.opt['fun'])
+
+        if find_freq:
+            freq_interp = interpolate.interp2d(self.yy,self.xx,self.grid.imag)
+            crit_freq = freq_interp(x_crit, y_crit)[0]
+            return (x_crit, y_crit, crit_freq)
+
+        return (x_crit, y_crit)
 
     def plot_crit(self, title='growth_rates',transpose=True, xlabel = "", ylabel = ""):
         """make a simple plot of the growth rates and critical curve
