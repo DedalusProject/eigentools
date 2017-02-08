@@ -108,9 +108,15 @@ class Eigenproblem():
         old_evp = self.EVP
         old_d = old_evp.domain
         old_x = old_d.bases[0]
-
+        old_x_type = old_x.__class__.__name__
         n_hi = int(old_x.coeff_size * self.factor)
-        x = de.Chebyshev(old_x.name,n_hi,interval=old_x.interval)
+        
+        if old_x_type == "Chebyshev":
+            x = de.Chebyshev(old_x.name,n_hi,interval=old_x.interval)
+        elif old_x_type == "Fourier":
+            x = de.Fourier(old_x.name,n_hi,interval=old_x.interval)
+        else:
+            raise ValueError("Don't know how to make a basis of type {}".format(old_x_type))
         d = de.Domain([x],comm=old_d.dist.comm)
         self.EVP_hires = de.EVP(d,old_evp.variables,old_evp.eigenvalue)
 
