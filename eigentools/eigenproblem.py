@@ -1,7 +1,9 @@
 from dedalus.tools.cache import CachedAttribute
+from dedalus.core.field import Field
 import dedalus.public as de
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.interpolate import interp1d
 
 class Eigenproblem():
     def __init__(self, EVP):
@@ -19,11 +21,12 @@ class Eigenproblem():
     def process_evalues(self, ev):
         return ev[np.isfinite(ev)]
     
-    def growth_rate(self,params,reject=True):
+    def growth_rate(self,params,reject=True, tol=1e-10):
         """returns the growth rate, defined as the eigenvalue with the largest
         real part. May acually be a decay rate if there is no growing mode.
         
-        also returns the index of the fastest growing mode.
+        also returns the index of the fastest growing mode.  If there are no
+        good eigenvalue, returns nan, None, None.
         """
         for k,v in params.items():
             # Dedalus workaround: must change values in two places
@@ -33,7 +36,9 @@ class Eigenproblem():
         try:
             self.solve()
             if reject:
-                self.reject_spurious()
+                self.reject_spurious(tol=tol)
+                if len(self.evalues_good.real) == 0:
+                    return np.nan, None, None
                 gr_rate = np.max(self.evalues_good.real)
                 gr_indx = self.evalues_good_index[self.evalues_good.real == gr_rate]
                 freq = self.evalues_good[self.evalues_good.real == gr_rate].imag
@@ -95,36 +100,60 @@ class Eigenproblem():
 
         fig.savefig('{}_spectrum_{}.png'.format(title,spectype))
 
-    def reject_spurious(self, factor=1.5):
+    def reject_spurious(self, factor=1.5, tol=1e-10):
         """may be able to pull everything out of EVP to construct a new one with higher N..."""
         self.factor = factor
-        self.solve_hires()
+        self.solve_hires(tol=tol)
         evg, indx = self.discard_spurious_eigenvalues()
         self.evalues_good = evg
         self.evalues_good_index = indx
 
         
-    def solve_hires(self):
+    def solve_hires(self, tol=1e-10):
         old_evp = self.EVP
         old_d = old_evp.domain
         old_x = old_d.bases[0]
-        old_x_type = old_x.__class__.__name__
-        n_hi = int(old_x.coeff_size * self.factor)
-        
-        if old_x_type == "Chebyshev":
-            x = de.Chebyshev(old_x.name,n_hi,interval=old_x.interval)
-        elif old_x_type == "Fourier":
-            x = de.Fourier(old_x.name,n_hi,interval=old_x.interval)
+        old_x_grid = old_d.grid(0, scales=old_d.dealias)
+        if type(old_x) == de.Compound:
+            bases = []
+            for basis in old_x.subbases:
+                old_x_type = basis.__class__.__name__
+                n_hi = int(basis.base_grid_size*self.factor)
+                if old_x_type == "Chebyshev":
+                    x = de.Chebyshev(basis.name, n_hi, interval=basis.interval)
+                elif old_x_type == "Fourier":
+                    x = de.Fourier(basis.name, n_hi, interval=basis.interval)
+                else:
+                    raise ValueError("Don't know how to make a basis of type {}".format(old_x_type))
+                bases.append(x)
+            x = de.Compound(old_x.name, tuple(bases))
         else:
-            raise ValueError("Don't know how to make a basis of type {}".format(old_x_type))
+            old_x_type = old_x.__class__.__name__
+            n_hi = int(old_x.coeff_size * self.factor)
+            if old_x_type == "Chebyshev":
+                x = de.Chebyshev(old_x.name,n_hi,interval=old_x.interval)
+            elif old_x_type == "Fourier":
+                x = de.Fourier(old_x.name,n_hi,interval=old_x.interval)
+            else:
+                raise ValueError("Don't know how to make a basis of type {}".format(old_x_type))
         d = de.Domain([x],comm=old_d.dist.comm)
-        self.EVP_hires = de.EVP(d,old_evp.variables,old_evp.eigenvalue)
+        self.EVP_hires = de.EVP(d,old_evp.variables,old_evp.eigenvalue, tolerance=tol)
 
-        for k,v in old_evp.parameters.items():
-            self.EVP_hires.parameters[k] = v
-
+        x_grid = d.grid(0, scales=d.dealias)
+        
         for k,v in old_evp.substitutions.items():
             self.EVP_hires.substitutions[k] = v
+
+        for k,v in old_evp.parameters.items():
+            if type(v) == Field: #NCCs
+                new_field = d.new_field()
+                v.set_scales(old_d.dealias, keep_data=True)
+                new_field.set_scales(d.dealias, keep_data=False)
+                f = interp1d(old_x_grid, v['g']) 
+                new_field['g'] = f(x_grid)
+                self.EVP_hires.parameters[k] = new_field
+            else: #scalars
+                self.EVP_hires.parameters[k] = v
 
         for e in old_evp.equations:
             self.EVP_hires.add_equation(e['raw_equation'])
@@ -168,7 +197,7 @@ class Eigenproblem():
         
         lambda1_sorted = lambda1_and_indx[:, 0]
         lambda2_sorted = lambda2_and_indx[:, 0]
-    
+
         # Compute sigmas from lower resolution run (gridnum = N1)
         sigmas = np.zeros(len(lambda1_sorted))
         sigmas[0] = np.abs(lambda1_sorted[0] - lambda1_sorted[1])

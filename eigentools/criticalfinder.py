@@ -135,6 +135,7 @@ class CriticalFinder:
         if len(self.xyz_grids) == 2:
             return interpolate.interp2d(self.xyz_grids[0][0,:], self.xyz_grids[1][:,0], self.grid.real)
         else:
+            print("Creating N-dimensional interpolant function.  This may take a while...")
             return interpolate.Rbf(*self.xyz_grids, self.grid.real)
 
     def load_grid(self, filename):
@@ -158,7 +159,14 @@ class CriticalFinder:
             outfile.close()
     
     def root_finder(self):
-        
+        """
+        For an N-dimensional problem, looking from numbers (a, A) in dim1,
+        (b, B) in dim2, (c, C) in dim3, and so on, finds the value of dim1
+        at which the eigenvalues cross zero for each other combination of values
+        in each other dimension.
+
+        TODO: Make this parallel.  Right now it's a huge (N-1)-dimensional for-loop
+        """
         # This is mega-ugly, and needs to be improved to work better in N-dimensions than
         # N-1 nested for-loops.
         self.roots = np.zeros(self.xyz_grid[1].shape[1:])
@@ -190,7 +198,7 @@ class CriticalFinder:
         #print up string to debug it and make sure it's doing what we expect.
         exec(nested_loop_string) #This is where the meat of the function actually happens
 
-    def crit_finder(self, find_freq=False):
+    def crit_finder(self, find_freq=False, method='Powell'):
         """returns a tuple of the x value at which the minimum (critical value
         occurs), and the y value. 
 
@@ -202,47 +210,71 @@ class CriticalFinder:
         self.root_finder()
         #print("my roots are", self.roots)
         mask = np.isfinite(self.roots)
-        yy_root = self.yy[mask,0]
+
+        good_values = [array[0,mask] for array in self.xyz_grid[1:]]
         rroot = self.roots[mask]
-        #print("interpolating over yyroot ", yy_root, "and rroot", rroot)
-        self.root_fn = interpolate.interp1d(yy_root,rroot,kind='cubic')
-        
-        mid = yy_root.shape[0]/2
-        
-        bracket = [yy_root[0],yy_root[mid],yy_root[-1]]
-        
-        self.opt = optimize.minimize_scalar(self.root_fn,bracket=bracket)
 
-        x_crit = self.opt['x']
-        y_crit = np.asscalar(self.opt['fun'])
+        #Interpolate and find the minimum
+        if len(self.xyz_grid) == 2:
+            self.root_fn = interpolate.interp1d(good_values[0],rroot,kind='cubic')
+            
+            mid = int(len(good_values)/2)
+            bracket = [good_values[0][0],good_values[0][mid],good_values[0][-1]]
+            
+            result = optimize.minimize_scalar(self.root_fn,bracket=bracket)
+        else:
+            print("Creating (N-1)-dimensional interpolant function for root finding. This may take a while...")
+            self.root_fn = interpolate.Rbf(*good_values, rroot)
+            min_func = lambda arr: self.root_fn(*arr)
 
+            guess_arg = rroot.argmin()
+            init_guess = [arr[guess_arg] for arr in good_values]
+            bound_vals = [(arr.min(), arr.max()) for arr in good_values]
+
+            # Not necessarily sure what the best method is to use here for a general problem.
+            result = optimize.minimize(min_func, init_guess, bounds=bound_vals, method=method)
+
+        #Store the values of parameters at which the minimum occur
+        if result.success:
+            crits = [np.asscalar(result.fun))]
+            for x in result.x: crits.append(np.asscalar(x))
+        else:
+            crits = [np.nan]*len(self.xyz_grid)
+       
+        #If looking for the frequency, also get the imaginary value at the crit point
         if find_freq:
-            freq_interp = interpolate.interp2d(self.yy,self.xx,self.grid.imag)
-            crit_freq = freq_interp(x_crit, y_crit)[0]
-            return (x_crit, y_crit, crit_freq)
-
-        return (x_crit, y_crit)
+            if result.success:
+                if len(self.xyz_grid == 2:
+                    freq_interp = interpolate.interp2d(self.yy,self.xx,self.grid.imag)
+                else:
+                    print("Creating (N)-dimensional interpolant function for frequency finding. This may take a while...")
+                    freq_interp = interpolate.Rbf(*self.xyz_grid, self.grid.imag)
+                crits.append(freq_interp(*crits)[0])
+            else:
+                crits.append(np.nan)
+        return crits
 
     def plot_crit(self, title='growth_rates',transpose=True, xlabel = "", ylabel = ""):
         """make a simple plot of the growth rates and critical curve
 
         """
+        if len(self.xyz_grid) > 2:
+            raise Exception("Plot is not implemented for > 2 dimensions")
         fig = plt.figure()
         ax = fig.add_subplot(111)
 
         if transpose:
-            xx = self.yy.T
-            yy = self.xx.T
+            xx = self.xyz_grid[1][:,0].T
+            yy = self.xyz_grid[0][0,:].T
             grid = self.grid.T
-            x = self.yy[:,0]
+            x = self.xyz_grid[1][:,0]
             y = self.roots
         else:
-            xx = self.xx
-            yy = self.yy
+            xx = self.xyz_grid[0]
+            yy = self.xyz_grid[1]
             grid = self.grid
             x = self.roots
-            y = self.yy[:,0]
-
+            y = self.xyz_grid[1][:,0]
         plt.pcolormesh(xx,yy,grid,cmap='autumn')#,vmin=-1,vmax=1)
         plt.colorbar()
         plt.scatter(x,y)
