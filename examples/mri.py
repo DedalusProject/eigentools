@@ -15,7 +15,7 @@ comm = MPI.COMM_WORLD
 
 # Define the MRI problem in Dedalus: 
 
-x = de.Chebyshev('x',64)
+x = de.Chebyshev('x',48)
 d = de.Domain([x],comm=MPI.COMM_SELF)
 
 mri = de.EVP(d,['psi','u', 'A', 'B', 'psix', 'psixx', 'psixxx', 'ux', 'Ax', 'Bx'],'sigma')
@@ -25,8 +25,12 @@ Rm = 4.879
 Pm = 0.001
 mri.parameters['q'] = 1.5
 mri.parameters['beta'] = 25.0
-mri.parameters['iR'] = Pm/Rm
-mri.parameters['iRm'] = 1./Rm
+mri.parameters['Re'] = Rm
+mri.parameters['Pr'] = Pm
+mri.substitutions['iR'] = '(Pr/Re)'
+mri.substitutions['iRm'] = '(1./Re)'
+#mri.parameters['iR'] = Pm/Rm
+#mri.parameters['iRm'] = 1./Rm
 mri.parameters['Q'] = 0.748
 
 mri.add_equation("sigma*psixx - Q**2*sigma*psi - iR*dx(psixxx) + 2*iR*Q**2*psixx - iR*Q**4*psi - 2*1j*Q*u - (2/beta)*1j*Q*dx(Ax) + (2/beta)*Q**3*1j*A = 0")
@@ -57,18 +61,22 @@ EP = Eigenproblem(mri)
 
 # create a shim function to translate (x, y) to the parameters for the eigenvalue problem:
 def shim(x,y):
-        gr, indx = EP.growth_rate({"alpha":x,"Re":y})
+    gr, indx, freq = EP.growth_rate({"Re":x,"Q":y})
     return gr
 
 cf = CriticalFinder(shim, comm)
 
 # generating the grid is the longest part
 start = time.time()
-cf.grid_generator(4.6,5.0,0.74,0.76,4,4)
+mins = np.array((4.6, 0.74))
+maxs = np.array((5.0, 0.76))
+ns   = np.array((4, 4))
+cf.grid_generator(mins, maxs, ns)
 end = time.time()
 print("grid generation time: {:10.5f} sec".format(end-start))
 
 cf.root_finder()
+print(cf.roots)
 crit = cf.crit_finder()
 
 if comm.rank == 0:

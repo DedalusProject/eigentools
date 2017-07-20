@@ -51,7 +51,7 @@ class Eigenproblem():
 
         except np.linalg.linalg.LinAlgError:
             print("Eigenvalue solver failed to converge for parameters {}".format(params))
-            return np.nan
+            return np.nan, None, None
 
     def spectrum(self, title='eigenvalue',spectype='raw'):
         if spectype == 'raw':

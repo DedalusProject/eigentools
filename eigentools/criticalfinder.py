@@ -63,7 +63,7 @@ class CriticalFinder:
         self.nproc = self.comm.size
         self.rank = self.comm.rank
 
-    def grid_generator(self, mins, maxs, dims, logs):
+    def grid_generator(self, mins, maxs, dims, logs=None):
         """
         Generates an N-dimensional grid over the specified parameter
         space of an eigenvalue problem.  Once you get > 3 dimensions,
@@ -91,14 +91,16 @@ class CriticalFinder:
             obj = CriticalFinder(func, comm)
             obj.grid_generator(mins, maxs, dims, logs)
         """
+        if logs == None:
+            logs = np.array([False]*len(mins))
         ranges = []
         for i in range(len(mins)):
             if logs[i]:
                 ranges.append(np.logspace(np.log10(mins[i]), np.log10(maxs[i]),
-                                          dims[i], dtype=np.complex128))
+                                          dims[i], dtype=np.float64))
             else:
                 ranges.append(np.linspace(mins[i], maxs[i], dims[i], 
-                                          dtype=np.complex128))
+                                          dtype=np.float64))
         self.xyz_grids = np.meshgrid(*ranges)
 
         self.grid = np.zeros_like(self.xyz_grids[0])
@@ -114,9 +116,9 @@ class CriticalFinder:
             for i, indx in enumerate(indices):
                 zeros_before = len(indices) - i - 1
                 zeros_after = i
-                indices = [0]*zeros_before + [indx] + [0]*zeros_after
-                values.append(self.xyz_grids[i][*indices])
-            local_grid[ii] = self.func(*values)[0]
+                this_indx = [0]*zeros_before + [indx] + [0]*zeros_after
+                values.append(self.xyz_grids[i][tuple(this_indx)])
+            local_grid[ii] = self.func(*values)
 
         data = np.empty(dims.prod(), dtype='complex128')
 
@@ -140,14 +142,14 @@ class CriticalFinder:
 
     def load_grid(self, filename):
         infile = h5py.File(filename,'r')
-        self.xyz_grid = []
+        self.xyz_grids = []
         try:
             count = 0
             while True:
-                self.xyz_grid.append(infile['/xyz_{}'.format(i)][:])
+                self.xyz_grids.append(infile['/xyz_{}'.format(i)][:])
                 count += 1
         except:
-            print("Read in {}-dimensional grid".format(len(self.xyz_grid))
+            print("Read in {}-dimensional grid".format(len(self.xyz_grids)))
         self.grid = infile['/grid'][:]
         
     def save_grid(self, filen):
@@ -169,33 +171,35 @@ class CriticalFinder:
         """
         # This is mega-ugly, and needs to be improved to work better in N-dimensions than
         # N-1 nested for-loops.
-        self.roots = np.zeros(self.xyz_grid[1].shape[1:])
+        self.roots = np.zeros(self.xyz_grids[1].shape[1:])
         nested_loop_string = ""
         cap_a_char = 65 #chr(65) = A, and we can increment it to get diff characters
         low_a_char = 97
-        for i in range(len(self.roots)-1):
+        for i in range(len(self.xyz_grids)-1):
             indx = i + 1
             colons_before = indx
-            colons_after  = len(self.roots) - 1 - indx
+            colons_after  = len(self.xyz_grids) - 1 - indx
             index_string = "0,"*colons_before + ":" + ",0"*colons_after
-            nested_loop_string += '{}for {},{} in enumerate(self.xyz_grid[{}][{}]:\n'.\
+            nested_loop_string += '{}for {},{} in enumerate(self.xyz_grids[{}][{}]):\n'.\
                                             format("\t"*i,chr(cap_a_char+i), chr(low_a_char+i),\
                                                    indx, index_string)
-        indxs = np.arange(len(self.roots)-1) + cap_a_char
+        indxs = np.arange(len(self.xyz_grids)-1) + cap_a_char
         indxs = [chr(i) for i in indxs]
-        args  = np.arange(len(self.roots)-1) + low_a_char
+        args  = np.arange(len(self.xyz_grids)-1) + low_a_char
         args  = [chr(i) for i in args]
         indx_str = (len(indxs)*"{},").format(*indxs)
         args_str = (len(args)*"{},").format(*args)
         indx_str, args_str = indx_str[:-1], args_str[:-1]
-        grid_indx_str = ",0"*(len(self.roots)-1)
+        grid_indx_str = ",0"*(len(self.xyz_grids)-1)
         nested_loop_string += """
-            {0:}try:
-            {0:}    self.roots[{1:}] = optimize.brentq(self.interpolator,self.xyz_grid[0][0{3:}],self.xyz_grid[0][-1{3:}],args=({2:}))
-            {0:}except ValueError:
-            {0:}    self.roots[{1:}] = np.nan
-        """.format("\t"*(len(self.roots)-1), indx_str, args_str, grid_indx_str)
+{0:}try:
+{0:}    self.roots[{1:}] = optimize.brentq(self.interpolator,self.xyz_grids[0][0{3:}],self.xyz_grids[0][-1{3:}],args=({2:}))
+{0:}except ValueError:
+{0:}    self.roots[{1:}] = np.nan
+        """.format("\t"*(len(self.xyz_grids)-1), indx_str, args_str, grid_indx_str)
         #print up string to debug it and make sure it's doing what we expect.
+        #print(nested_loop_string)
+        
         exec(nested_loop_string) #This is where the meat of the function actually happens
 
     def crit_finder(self, find_freq=False, method='Powell'):
@@ -211,11 +215,11 @@ class CriticalFinder:
         #print("my roots are", self.roots)
         mask = np.isfinite(self.roots)
 
-        good_values = [array[0,mask] for array in self.xyz_grid[1:]]
+        good_values = [array[0,mask] for array in self.xyz_grids[1:]]
         rroot = self.roots[mask]
 
         #Interpolate and find the minimum
-        if len(self.xyz_grid) == 2:
+        if len(self.xyz_grids) == 2:
             self.root_fn = interpolate.interp1d(good_values[0],rroot,kind='cubic')
             
             mid = int(len(good_values)/2)
@@ -236,15 +240,15 @@ class CriticalFinder:
 
         #Store the values of parameters at which the minimum occur
         if result.success:
-            crits = [np.asscalar(result.fun))]
+            crits = [np.asscalar(result.fun)]
             for x in result.x: crits.append(np.asscalar(x))
         else:
-            crits = [np.nan]*len(self.xyz_grid)
+            crits = [np.nan]*len(self.xyz_grids)
        
         #If looking for the frequency, also get the imaginary value at the crit point
         if find_freq:
             if result.success:
-                if len(self.xyz_grid == 2:
+                if len(self.xyz_grid) == 2:
                     freq_interp = interpolate.interp2d(self.yy,self.xx,self.grid.imag)
                 else:
                     print("Creating (N)-dimensional interpolant function for frequency finding. This may take a while...")
