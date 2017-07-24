@@ -55,13 +55,16 @@ def index2indices(index, dims):
     for i in range(len(dims)):
         if i < len(dims) - 1:
             indices.append(np.int(np.floor(index/np.prod(dims[i+1:]))))
+            index -= indices[-1]*np.prod(dims[i+1:])
         else:
             indices.append(np.int(index % dims[i]))
-        index -= indices[-1]
+            index -= indices[-1]
         if indices[i] >= dims[i]:
             raise Exception("Index {} too large for dimension {}".format(indices[i], dims[i]))
+
     if index != 0:
-        raise Exception("Something went wrong converting to indices")
+        print(indices, init_indx, index, dims)
+        raise Exception("Something went wrong converting index {} to indices".format(index))
     return indices
 
 class CriticalFinder:
