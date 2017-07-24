@@ -173,7 +173,7 @@ class CriticalFinder:
         eigenvalues found.  Subsequent calls use the interpolator function, rather than
         recreating it.
         """
-        if len(self.xyz_grids) == 1:#2:
+        if len(self.xyz_grids) == 2:
             return interpolate.interp2d(self.xyz_grids[0][:,0], self.xyz_grids[1][0,:], self.grid.real.T)
         else:
             grids = []
@@ -181,6 +181,8 @@ class CriticalFinder:
                 indx = '0,'*i + ':' + ',0'*(len(self.xyz_grids)-i-1)
                 string = 'grids.append(self.xyz_grids[i][{}])'.format(indx)
                 exec(string)
+            # TODO: log-scale any axes that are logged before using, here.  This assumes
+            # a regular grid, and our grid is regular in log-space if log=True for a dimension.
             gross_f = interpolate.RegularGridInterpolator(grids, self.grid.real)
             return lambda *args: gross_f(args)
 
@@ -277,7 +279,7 @@ class CriticalFinder:
         print(good_values, rroot)
 
         #Interpolate and find the minimum
-        if len(self.xyz_grids) == 1:#2:
+        if len(self.xyz_grids) == 2:
             self.root_fn = interpolate.interp1d(good_values[0],rroot,kind='cubic')
             mid = rroot.argmin()
             if mid == len(good_values[0])-1 or mid == 0:
@@ -289,6 +291,7 @@ class CriticalFinder:
             result['success'] = True
         else:
             print("Creating (N-1)-dimensional interpolant function for root finding. This may take a while...")
+            #TODO: think about making this better, maybe?
             self.root_fn = interpolate.Rbf(*good_values, rroot)
             min_func = lambda arr: self.root_fn(*arr)
 
@@ -312,10 +315,11 @@ class CriticalFinder:
         #If looking for the frequency, also get the imaginary value at the crit point
         if find_freq:
             if result.success:
-                if len(self.xyz_grids) == 1:#2:
+                if len(self.xyz_grids) == 2:
                     freq_interp = interpolate.interp2d(self.yy,self.xx,self.grid.imag.T)
                 else:
                     print("Creating (N)-dimensional interpolant function for frequency finding. This may take a while...")
+                    #TODO: do this as a RegularGridInterpolator
                     freq_interp = interpolate.Rbf(*self.xyz_grids, self.grid.imag)
                 crits.append(freq_interp(*crits)[0])
             else:
