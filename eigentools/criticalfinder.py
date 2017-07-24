@@ -169,7 +169,7 @@ class CriticalFinder:
         recreating it.
         """
         if len(self.xyz_grids) == 2:
-            return interpolate.interp2d(self.xyz_grids[0][0,:], self.xyz_grids[1][:,0], self.grid.real)
+            return interpolate.interp2d(self.xyz_grids[0][:,0], self.xyz_grids[1][0,:], self.grid.real)
         else:
             print("Creating N-dimensional interpolant function.  This may take a while...")
             return interpolate.Rbf(*self.xyz_grids, self.grid.real)
@@ -239,7 +239,7 @@ class CriticalFinder:
 {0:}    self.roots[{1:}] = np.nan
         """.format("\t"*(len(self.xyz_grids)-1), indx_str, args_str, grid_indx_str)
         #print up string to debug it and make sure it's doing what we expect.
-        #print(nested_loop_string)
+        print(nested_loop_string)
         
         exec(nested_loop_string) #This is where the meat of the function actually happens
 
