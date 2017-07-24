@@ -165,6 +165,11 @@ class CriticalFinder:
         self.comm.Gatherv(local_grid,[data,rec_counts,displacements, MPI.F_DOUBLE_COMPLEX])
 
         data = data.reshape(*dims)
+        good = np.isfinite(data)
+        if self.comm.rank == 0:
+            print("Dumping bad data at, e.g., x {}, y {}".format(self.xyz_grids[0][not good], self.xyz_grids[1][not good]))
+        data = data[good]
+        self.xyz_grids = [g[good] for g in self.xyz_grids]
         self.comm.Bcast(data, root = 0)
 
         self.grid = data
