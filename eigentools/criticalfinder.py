@@ -32,12 +32,36 @@ def load_balance(dims, nproc):
     return np.array_split(index,nproc)
 
 def index2indices(index, dims):
+    """
+    Converts a single number index into its corresponding N-dimensional index in
+    the N-dimensional space that the problem is searching in.
+
+    Inputs:
+    -------
+        index   - An integer, containing the scalar index you want to convert to
+                  a full index in N-dimensional space.
+        dims    - A NumPy array, of N-elements, containing the size of each dimension.
+
+    Example:
+    --------
+    # searching on a 5 x 10 x 20 grid, dims = (5, 10, 20)
+    dims = np.array( (5, 10, 20) )
+    # index is between 0 and dims.prod() (1000 in this example)
+    index = 543
+    indxs = index2indices(index, dims)
+    print(indxs) #should return [2, 7, 3]
+    """
     indices = []
     for i in range(len(dims)):
         if i < len(dims) - 1:
             indices.append(np.int(np.floor(index/np.prod(dims[i+1:]))))
         else:
             indices.append(np.int(index % dims[i]))
+        index -= indices[-1]
+        if indices[i] >= dims[i]:
+            raise Exception("Index {} too large for dimension {}".format(indices[i], dims[i]))
+    if index != 0:
+        raise Exception("Something went wrong converting to indices")
     return indices
 
 class CriticalFinder:
@@ -134,6 +158,13 @@ class CriticalFinder:
 
     @CachedAttribute
     def interpolator(self):
+        """
+        On the first call, creates an interpolator of an N+1 dimensional function,
+        where the first N dimensions are the grids created in grid_generator for all
+        dimensions being explored, and the last dimension is the real component of the
+        eigenvalues found.  Subsequent calls use the interpolator function, rather than
+        recreating it.
+        """
         if len(self.xyz_grids) == 2:
             return interpolate.interp2d(self.xyz_grids[0][0,:], self.xyz_grids[1][:,0], self.grid.real)
         else:
@@ -141,18 +172,25 @@ class CriticalFinder:
             return interpolate.Rbf(*self.xyz_grids, self.grid.real)
 
     def load_grid(self, filename):
+        """
+        Saves the grids of all input parameters as well as the complex eigenvalue
+        grid that has been solved for.
+        """
         infile = h5py.File(filename,'r')
         self.xyz_grids = []
         try:
             count = 0
             while True:
-                self.xyz_grids.append(infile['/xyz_{}'.format(i)][:])
+                self.xyz_grids.append(infile['/xyz_{}'.format(count)][:])
                 count += 1
         except:
             print("Read in {}-dimensional grid".format(len(self.xyz_grids)))
         self.grid = infile['/grid'][:]
         
     def save_grid(self, filen):
+        """
+        Load a grid file, in the format as created in load_grid.
+        """
         if self.comm.rank == 0:
             outfile = h5py.File(filen+'.h5','w')
             outfile.create_dataset('grid',data=self.grid)
