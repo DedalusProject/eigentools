@@ -121,14 +121,24 @@ class CriticalFinder:
         if logs == None:
             logs = np.array([False]*len(mins))
         ranges = []
+        N = len(mins)
         for i in range(len(mins)):
-            if logs[i]:
-                ranges.append(np.logspace(np.log10(mins[i]), np.log10(maxs[i]),
-                                          dims[i], dtype=np.float64))
+            #we start appending at the END, because that makes things make more sense index-wise later
+            if logs[N-1-i]:
+                ranges.append(np.logspace(np.log10(mins[N-1-i]), np.log10(maxs[N-1-i]),
+                                          dims[N-1-i], dtype=np.float64))
             else:
-                ranges.append(np.linspace(mins[i], maxs[i], dims[i], 
+                ranges.append(np.linspace(mins[N-1-i], maxs[N-1-i], dims[N-1-i], 
                                           dtype=np.float64))
         self.xyz_grids = np.meshgrid(*ranges)
+
+        # Makes it so that the ith array in xyz_grids has its values vary over the ith dimension
+        # (by default, the 0th one varies over the 1st dimension, and vice-versa)
+        tmp = []
+        tmp.append(self.xyz_grids[1])
+        tmp.append(self.xyz_grids[0])
+        for i in range(N-2): tmp.append(self.xyz_grids[i+2])
+        self.xyz_grids = tmp
 
         self.grid = np.zeros_like(self.xyz_grids[0])
         load_indices = load_balance(dims, self.nproc)
@@ -141,8 +151,8 @@ class CriticalFinder:
             indices = index2indices(index, dims)
             values = []
             for i, indx in enumerate(indices):
-                zeros_before = len(indices) - i - 1
-                zeros_after = i
+                zeros_before = i
+                zeros_after = len(indices) - i - 1
                 this_indx = [0]*zeros_before + [indx] + [0]*zeros_after
                 values.append(self.xyz_grids[i][tuple(this_indx)])
             local_grid[ii] = self.func(*values)
@@ -169,7 +179,7 @@ class CriticalFinder:
         recreating it.
         """
         if len(self.xyz_grids) == 2:
-            return interpolate.interp2d(self.xyz_grids[0][:,0], self.xyz_grids[1][0,:], self.grid.real)
+            return interpolate.interp2d(self.xyz_grids[0][:,0], self.xyz_grids[1][0,:], self.grid.real.T)
         else:
             print("Creating N-dimensional interpolant function.  This may take a while...")
             return interpolate.Rbf(*self.xyz_grids, self.grid.real)
@@ -239,7 +249,7 @@ class CriticalFinder:
 {0:}    self.roots[{1:}] = np.nan
         """.format("\t"*(len(self.xyz_grids)-1), indx_str, args_str, grid_indx_str)
         #print up string to debug it and make sure it's doing what we expect.
-        print(nested_loop_string)
+        #print(nested_loop_string)
         
         exec(nested_loop_string) #This is where the meat of the function actually happens
 
@@ -253,7 +263,6 @@ class CriticalFinder:
 
         """
         self.root_finder()
-        #print("my roots are", self.roots)
         mask = np.isfinite(self.roots)
 
         good_values = [array[0,mask] for array in self.xyz_grids[1:]]
@@ -262,11 +271,14 @@ class CriticalFinder:
         #Interpolate and find the minimum
         if len(self.xyz_grids) == 2:
             self.root_fn = interpolate.interp1d(good_values[0],rroot,kind='cubic')
-            
-            mid = int(len(good_values)/2)
-            bracket = [good_values[0][0],good_values[0][mid],good_values[0][-1]]
+            mid = rroot.argmin()
+            if mid == len(good_values[0])-1 or mid == 0:
+                bracket = good_values[0][0], good_values[0][-1]
+            else:
+                bracket = [good_values[0][0],good_values[0][mid],good_values[0][-1]]
             
             result = optimize.minimize_scalar(self.root_fn,bracket=bracket)
+            result['success'] = True
         else:
             print("Creating (N-1)-dimensional interpolant function for root finding. This may take a while...")
             self.root_fn = interpolate.Rbf(*good_values, rroot)
@@ -282,18 +294,21 @@ class CriticalFinder:
         #Store the values of parameters at which the minimum occur
         if result.success:
             crits = [np.asscalar(result.fun)]
-            for x in result.x: crits.append(np.asscalar(x))
+            try:
+                for x in result.x: crits.append(np.asscalar(x))
+            except:
+                crits.append(np.asscalar(result.x))
         else:
             crits = [np.nan]*len(self.xyz_grids)
        
         #If looking for the frequency, also get the imaginary value at the crit point
         if find_freq:
             if result.success:
-                if len(self.xyz_grid) == 2:
-                    freq_interp = interpolate.interp2d(self.yy,self.xx,self.grid.imag)
+                if len(self.xyz_grids) == 2:
+                    freq_interp = interpolate.interp2d(self.yy,self.xx,self.grid.imag.T)
                 else:
                     print("Creating (N)-dimensional interpolant function for frequency finding. This may take a while...")
-                    freq_interp = interpolate.Rbf(*self.xyz_grid, self.grid.imag)
+                    freq_interp = interpolate.Rbf(*self.xyz_grids, self.grid.imag)
                 crits.append(freq_interp(*crits)[0])
             else:
                 crits.append(np.nan)

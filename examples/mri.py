@@ -15,7 +15,7 @@ comm = MPI.COMM_WORLD
 
 # Define the MRI problem in Dedalus: 
 
-x = de.Chebyshev('x',32)
+x = de.Chebyshev('x',24)
 d = de.Domain([x],comm=MPI.COMM_SELF)
 
 mri = de.EVP(d,['psi','u', 'A', 'B', 'psix', 'psixx', 'psixxx', 'ux', 'Ax', 'Bx'],'sigma')
@@ -72,6 +72,7 @@ mins = np.array((4.6, 0.74))
 maxs = np.array((5.0, 0.76))
 ns   = np.array((4, 4))
 cf.grid_generator(mins, maxs, ns)
+for i, g in enumerate(cf.xyz_grids): print(g)
 print(cf.grid)
 end = time.time()
 print("grid generation time: {:10.5f} sec".format(end-start))
