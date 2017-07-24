@@ -68,12 +68,14 @@ cf = CriticalFinder(shim, comm)
 
 # generating the grid is the longest part
 start = time.time()
-mins = np.array((4.6, 0.74))
-maxs = np.array((5.0, 0.76))
-ns   = np.array((10, 10))
-cf.grid_generator(mins, maxs, ns)
-for i, g in enumerate(cf.xyz_grids): print(g)
-print(cf.grid)
+mins = np.array((4.0, 0.7))
+maxs = np.array((5.6, 0.9))
+ns   = np.array((10,10))
+cf.load_grid('mri_growth_rates.h5')
+print(cf.xyz_grids, cf.grid.real)
+#cf.grid_generator(mins, maxs, ns)
+#if comm.rank == 0:
+#    cf.save_grid('mri_growth_rates')
 end = time.time()
 print("grid generation time: {:10.5f} sec".format(end-start))
 

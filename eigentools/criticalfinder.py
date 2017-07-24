@@ -119,26 +119,21 @@ class CriticalFinder:
             obj.grid_generator(mins, maxs, dims, logs)
         """
         if logs == None:
-            logs = np.array([False]*len(mins))
+            self.logs = np.array([False]*len(mins))
+        else:
+            self.logs = logs
         ranges = []
         N = len(mins)
         for i in range(len(mins)):
             #we start appending at the END, because that makes things make more sense index-wise later
-            if logs[N-1-i]:
-                ranges.append(np.logspace(np.log10(mins[N-1-i]), np.log10(maxs[N-1-i]),
-                                          dims[N-1-i], dtype=np.float64))
+            if self.logs[i]:
+                ranges.append(np.logspace(np.log10(mins[i]), np.log10(maxs[i]),
+                                          dims[i], dtype=np.float64))
             else:
-                ranges.append(np.linspace(mins[N-1-i], maxs[N-1-i], dims[N-1-i], 
+                ranges.append(np.linspace(mins[i], maxs[i], dims[i], 
                                           dtype=np.float64))
-        self.xyz_grids = np.meshgrid(*ranges)
-
-        # Makes it so that the ith array in xyz_grids has its values vary over the ith dimension
-        # (by default, the 0th one varies over the 1st dimension, and vice-versa)
-        tmp = []
-        tmp.append(self.xyz_grids[1])
-        tmp.append(self.xyz_grids[0])
-        for i in range(N-2): tmp.append(self.xyz_grids[i+2])
-        self.xyz_grids = tmp
+        self.xyz_grids = np.meshgrid(*ranges, indexing='ij')
+        print(self.xyz_grids)
 
         self.grid = np.zeros_like(self.xyz_grids[0])
         load_indices = load_balance(dims, self.nproc)
@@ -165,11 +160,6 @@ class CriticalFinder:
         self.comm.Gatherv(local_grid,[data,rec_counts,displacements, MPI.F_DOUBLE_COMPLEX])
 
         data = data.reshape(*dims)
-        good = np.isfinite(data)
-        if self.comm.rank == 0:
-            print("Dumping bad data at, e.g., x {}, y {}".format(self.xyz_grids[0][not good], self.xyz_grids[1][not good]))
-        data = data[good]
-        self.xyz_grids = [g[good] for g in self.xyz_grids]
         self.comm.Bcast(data, root = 0)
 
         self.grid = data
@@ -183,13 +173,20 @@ class CriticalFinder:
         eigenvalues found.  Subsequent calls use the interpolator function, rather than
         recreating it.
         """
-        if len(self.xyz_grids) == 2:
+        if len(self.xyz_grids) == 1:#2:
             return interpolate.interp2d(self.xyz_grids[0][:,0], self.xyz_grids[1][0,:], self.grid.real.T)
         else:
-            print("Creating N-dimensional interpolant function.  This may take a while...")
-            return interpolate.Rbf(*self.xyz_grids, self.grid.real)
+            grids = []
+            for i,g in enumerate(self.xyz_grids):
+                indx = '0,'*i + ':' + ',0'*(len(self.xyz_grids)-i-1)
+                string = 'grids.append(self.xyz_grids[i][{}])'.format(indx)
+                exec(string)
+            gross_f = interpolate.RegularGridInterpolator(grids, self.grid.real)
+            return lambda *args: gross_f(args)
 
-    def load_grid(self, filename):
+
+
+    def load_grid(self, filename, logs = None):
         """
         Saves the grids of all input parameters as well as the complex eigenvalue
         grid that has been solved for.
@@ -203,6 +200,10 @@ class CriticalFinder:
                 count += 1
         except:
             print("Read in {}-dimensional grid".format(len(self.xyz_grids)))
+        if logs == None:
+            self.logs = np.array([False]*len(self.xyz_grids))
+        else:
+            self.logs = logs
         self.grid = infile['/grid'][:]
         
     def save_grid(self, filen):
@@ -249,6 +250,7 @@ class CriticalFinder:
         grid_indx_str = ",0"*(len(self.xyz_grids)-1)
         nested_loop_string += """
 {0:}try:
+{0:}    print(self.interpolator(self.xyz_grids[0][0,0], a), self.interpolator(self.xyz_grids[0][-1,0],a), self.xyz_grids[0][:,0])
 {0:}    self.roots[{1:}] = optimize.brentq(self.interpolator,self.xyz_grids[0][0{3:}],self.xyz_grids[0][-1{3:}],args=({2:}))
 {0:}except ValueError:
 {0:}    self.roots[{1:}] = np.nan
@@ -272,9 +274,10 @@ class CriticalFinder:
 
         good_values = [array[0,mask] for array in self.xyz_grids[1:]]
         rroot = self.roots[mask]
+        print(good_values, rroot)
 
         #Interpolate and find the minimum
-        if len(self.xyz_grids) == 2:
+        if len(self.xyz_grids) == 1:#2:
             self.root_fn = interpolate.interp1d(good_values[0],rroot,kind='cubic')
             mid = rroot.argmin()
             if mid == len(good_values[0])-1 or mid == 0:
@@ -309,7 +312,7 @@ class CriticalFinder:
         #If looking for the frequency, also get the imaginary value at the crit point
         if find_freq:
             if result.success:
-                if len(self.xyz_grids) == 2:
+                if len(self.xyz_grids) == 1:#2:
                     freq_interp = interpolate.interp2d(self.yy,self.xx,self.grid.imag.T)
                 else:
                     print("Creating (N)-dimensional interpolant function for frequency finding. This may take a while...")
@@ -319,7 +322,7 @@ class CriticalFinder:
                 crits.append(np.nan)
         return crits
 
-    def plot_crit(self, title='growth_rates',transpose=True, xlabel = "", ylabel = ""):
+    def plot_crit(self, title='growth_rates',transpose=False, xlabel = "", ylabel = ""):
         """make a simple plot of the growth rates and critical curve
 
         """
@@ -329,22 +332,40 @@ class CriticalFinder:
         ax = fig.add_subplot(111)
 
         if transpose:
-            xx = self.xyz_grids[0][:,0].T
-            yy = self.xyz_grids[1][0,:].T
-            grid = self.grid.T
+            xx = self.xyz_grids[0].T
+            yy = self.xyz_grids[1].T
+            grid = self.grid.real.T
             x = self.xyz_grids[0][:,0]
             y = self.roots
         else:
             xx = self.xyz_grids[0]
             yy = self.xyz_grids[1]
-            grid = self.grid
+            grid = self.grid.real
             x = self.roots
             y = self.xyz_grids[1][0,:]
-        plt.pcolormesh(xx,yy,grid,cmap='autumn')#,vmin=-1,vmax=1)
+            y, x = y[np.isfinite(x)], x[np.isfinite(x)]
+        print(xx, yy, grid)
+        biggest_val = np.abs(grid).max()
+        plt.pcolormesh(xx,yy,grid,cmap='RdYlBu_r',vmin=-biggest_val,vmax=biggest_val)
         plt.colorbar()
         plt.scatter(x,y)
         plt.ylim(yy.min(),yy.max())
         plt.xlim(xx.min(),xx.max())
+        if self.logs[0]:
+            plt.xscale('log')
+        if self.logs[1]:
+            plt.yscale('log')
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         fig.savefig('{}.png'.format(title))
+        plt.pcolormesh(xx,yy,self.interpolator((xx, yy)),cmap='RdYlBu_r',vmin=-biggest_val,vmax=biggest_val)
+        plt.scatter(x,y)
+        plt.ylim(yy.min(),yy.max())
+        plt.xlim(xx.min(),xx.max())
+        if self.logs[0]:
+            plt.xscale('log')
+        if self.logs[1]:
+            plt.yscale('log')
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+        fig.savefig('{}_interp.png'.format(title))
