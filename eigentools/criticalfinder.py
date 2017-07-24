@@ -318,23 +318,23 @@ class CriticalFinder:
         """make a simple plot of the growth rates and critical curve
 
         """
-        if len(self.xyz_grid) > 2:
+        if len(self.xyz_grids) > 2:
             raise Exception("Plot is not implemented for > 2 dimensions")
         fig = plt.figure()
         ax = fig.add_subplot(111)
 
         if transpose:
-            xx = self.xyz_grid[1][:,0].T
-            yy = self.xyz_grid[0][0,:].T
+            xx = self.xyz_grids[0][:,0].T
+            yy = self.xyz_grids[1][0,:].T
             grid = self.grid.T
-            x = self.xyz_grid[1][:,0]
+            x = self.xyz_grids[0][:,0]
             y = self.roots
         else:
-            xx = self.xyz_grid[0]
-            yy = self.xyz_grid[1]
+            xx = self.xyz_grids[0]
+            yy = self.xyz_grids[1]
             grid = self.grid
             x = self.roots
-            y = self.xyz_grid[1][:,0]
+            y = self.xyz_grids[1][0,:]
         plt.pcolormesh(xx,yy,grid,cmap='autumn')#,vmin=-1,vmax=1)
         plt.colorbar()
         plt.scatter(x,y)
