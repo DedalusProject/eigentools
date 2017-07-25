@@ -63,7 +63,6 @@ def index2indices(index, dims):
             raise Exception("Index {} too large for dimension {}".format(indices[i], dims[i]))
 
     if index != 0:
-        print(indices, init_indx, index, dims)
         raise Exception("Something went wrong converting index {} to indices".format(index))
     return indices
 
@@ -133,7 +132,6 @@ class CriticalFinder:
                 ranges.append(np.linspace(mins[i], maxs[i], dims[i], 
                                           dtype=np.float64))
         self.xyz_grids = np.meshgrid(*ranges, indexing='ij')
-        print(self.xyz_grids)
 
         self.grid = np.zeros_like(self.xyz_grids[0])
         load_indices = load_balance(dims, self.nproc)
@@ -150,7 +148,7 @@ class CriticalFinder:
                 zeros_after = len(indices) - i - 1
                 this_indx = [0]*zeros_before + [indx] + [0]*zeros_after
                 values.append(self.xyz_grids[i][tuple(this_indx)])
-            local_grid[ii] = self.func(*values)
+            local_grid[ii] = self.func(*tuple(values))
 
         data = np.empty(dims.prod(), dtype='complex128')
 
@@ -252,7 +250,7 @@ class CriticalFinder:
         grid_indx_str = ",0"*(len(self.xyz_grids)-1)
         nested_loop_string += """
 {0:}try:
-{0:}    print(self.interpolator(self.xyz_grids[0][0,0], a), self.interpolator(self.xyz_grids[0][-1,0],a), self.xyz_grids[0][:,0])
+{0:}    #print(self.interpolator(self.xyz_grids[0][0,0], a), self.interpolator(self.xyz_grids[0][-1,0],a), self.xyz_grids[0][:,0])
 {0:}    self.roots[{1:}] = optimize.brentq(self.interpolator,self.xyz_grids[0][0{3:}],self.xyz_grids[0][-1{3:}],args=({2:}))
 {0:}except ValueError:
 {0:}    self.roots[{1:}] = np.nan
@@ -276,7 +274,7 @@ class CriticalFinder:
 
         good_values = [array[0,mask] for array in self.xyz_grids[1:]]
         rroot = self.roots[mask]
-        print(good_values, rroot)
+
 
         #Interpolate and find the minimum
         if len(self.xyz_grids) == 2:
@@ -336,10 +334,10 @@ class CriticalFinder:
         ax = fig.add_subplot(111)
 
         if transpose:
-            xx = self.xyz_grids[0].T
-            yy = self.xyz_grids[1].T
+            xx = self.xyz_grids[1].T
+            yy = self.xyz_grids[0].T
             grid = self.grid.real.T
-            x = self.xyz_grids[0][:,0]
+            x = self.xyz_grids[1][0,:]
             y = self.roots
         else:
             xx = self.xyz_grids[0]
@@ -348,8 +346,7 @@ class CriticalFinder:
             x = self.roots
             y = self.xyz_grids[1][0,:]
             y, x = y[np.isfinite(x)], x[np.isfinite(x)]
-        print(xx, yy, grid)
-        biggest_val = np.abs(grid).max()
+        biggest_val = np.abs(grid).std()
         plt.pcolormesh(xx,yy,grid,cmap='RdYlBu_r',vmin=-biggest_val,vmax=biggest_val)
         plt.colorbar()
         plt.scatter(x,y)
@@ -362,14 +359,4 @@ class CriticalFinder:
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         fig.savefig('{}.png'.format(title))
-        plt.pcolormesh(xx,yy,self.interpolator((xx, yy)),cmap='RdYlBu_r',vmin=-biggest_val,vmax=biggest_val)
-        plt.scatter(x,y)
-        plt.ylim(yy.min(),yy.max())
-        plt.xlim(xx.min(),xx.max())
-        if self.logs[0]:
-            plt.xscale('log')
-        if self.logs[1]:
-            plt.yscale('log')
-        plt.xlabel(xlabel)
-        plt.ylabel(ylabel)
-        fig.savefig('{}_interp.png'.format(title))
+
