@@ -176,20 +176,34 @@ class CriticalFinder:
         recreating it.
         """
         if len(self.xyz_grids) == 2:
-            return interpolate.interp2d(self.xyz_grids[0][:,0], self.xyz_grids[1][0,:], self.grid.real.T)
+            xs, ys = self.xyz_grids[0][:,0], self.xyz_grids[1][0,:]
+            if self.logs[0]:
+                xs = np.log10(xs)
+            if self.logs[1]:
+                ys = np.log10(ys)
+            return interpolate.interp2d(xs, ys, self.grid.real.T)
         else:
-            return interpolate.Rbf(*self.xyz_grids, self.grid.real)
-            #grids = []
-            #for i,g in enumerate(self.xyz_grids):
-            #    indx = '0,'*i + ':' + ',0'*(len(self.xyz_grids)-i-1)
-            #    string = 'grids.append(self.xyz_grids[i][{}])'.format(indx)
-            #    exec(string)
-            ## TODO: log-scale any axes that are logged before using, here.  This assumes
-            ## a regular grid, and our grid is regular in log-space if log=True for a dimension.
-            #gross_f = interpolate.RegularGridInterpolator(grids, self.grid.real)
-            #return lambda *args: gross_f(args)
+            grids = []
+            for i,g in enumerate(self.xyz_grids):
+                indx = '0,'*i + ':' + ',0'*(len(self.xyz_grids)-i-1)
+                if not self.logs[i]:
+                    string = 'grids.append(self.xyz_grids[i][{}])'.format(indx)
+                else:
+                    string = 'grids.append(np.log10(self.xyz_grids[i][{}]))'.format(indx)
+                exec(string)
+            unclean_interp = interpolate.RegularGridInterpolator(grids, self.grid.real)
+            return lambda *args: unclean_interp(args)
 
-
+    def use_interpolator(self, *args):
+        """
+        Paired with the cached interpolator attribute -- properly sets up the logarithm of
+        ingoing data.
+        """
+        args = list(args)
+        for i, l in enumerate(self.logs):
+            if l:
+                args[i] = np.log10(np.array(args[i]))
+        return self.interpolator(*args)
 
     def load_grid(self, filename, logs = None):
         """
@@ -255,8 +269,8 @@ class CriticalFinder:
         grid_indx_str = ",0"*(len(self.xyz_grids)-1)
         nested_loop_string += """
 {0:}try:
-{0:}    #print(self.interpolator(self.xyz_grids[0][0,0], a), self.interpolator(self.xyz_grids[0][-1,0],a), self.xyz_grids[0][:,0])
-{0:}    self.roots[{1:}] = optimize.brentq(self.interpolator,self.xyz_grids[0][0{3:}],self.xyz_grids[0][-1{3:}],args=({2:}))
+{0:}    #print(self.use_interpolator(self.xyz_grids[0][0,0], a), self.use_interpolator(self.xyz_grids[0][-1,0],a), self.xyz_grids[0][:,0])
+{0:}    self.roots[{1:}] = optimize.brentq(self.use_interpolator,self.xyz_grids[0][0{3:}],self.xyz_grids[0][-1{3:}],args=({2:}))
 {0:}except ValueError:
 {0:}    self.roots[{1:}] = np.nan
         """.format("\t"*(len(self.xyz_grids)-1), indx_str, args_str, grid_indx_str)
@@ -293,7 +307,7 @@ class CriticalFinder:
             result['success'] = True
         else:
             if len(self.xyz_grids) == 3:
-                self.root_fn = interpolate.interp2d(*good_values, rroot)
+                self.root_fn = interpolate.interp2d(*good_values, rroot.T)#, kind='cubic')
             else:
                 self.root_fn = interpolate.Rbf(*good_values, rroot)
             min_func = lambda arr: self.root_fn(*arr)
@@ -332,35 +346,60 @@ class CriticalFinder:
         """make a simple plot of the growth rates and critical curve
 
         """
-        if len(self.xyz_grids) > 2:
+        if len(self.xyz_grids) > 3:
             raise Exception("Plot is not implemented for > 2 dimensions")
         fig = plt.figure()
         ax = fig.add_subplot(111)
-
-        if transpose:
-            xx = self.xyz_grids[1].T
-            yy = self.xyz_grids[0].T
-            grid = self.grid.real.T
-            x = self.xyz_grids[1][0,:]
-            y = self.roots
-        else:
-            xx = self.xyz_grids[0]
-            yy = self.xyz_grids[1]
-            grid = self.grid.real
-            x = self.roots
-            y = self.xyz_grids[1][0,:]
-            y, x = y[np.isfinite(x)], x[np.isfinite(x)]
-        biggest_val = np.abs(grid).std()
-        plt.pcolormesh(xx,yy,grid,cmap='RdYlBu_r',vmin=-biggest_val,vmax=biggest_val)
-        plt.colorbar()
-        plt.scatter(x,y)
-        plt.ylim(yy.min(),yy.max())
-        plt.xlim(xx.min(),xx.max())
-        if self.logs[0]:
-            plt.xscale('log')
-        if self.logs[1]:
-            plt.yscale('log')
-        plt.xlabel(xlabel)
-        plt.ylabel(ylabel)
-        fig.savefig('{}.png'.format(title))
+        if len(self.xyz_grids) == 2: 
+            if transpose:
+                xx = self.xyz_grids[1].T
+                yy = self.xyz_grids[0].T
+                grid = self.grid.real.T
+                x = self.xyz_grids[1][0,:]
+                y = self.roots
+            else:
+                xx = self.xyz_grids[0]
+                yy = self.xyz_grids[1]
+                grid = self.grid.real
+                x = self.roots
+                y = self.xyz_grids[1][0,:]
+                y, x = y[np.isfinite(x)], x[np.isfinite(x)]
+            biggest_val = np.abs(grid).std()
+            plt.pcolormesh(xx,yy,grid,cmap='RdYlBu_r',vmin=-biggest_val,vmax=biggest_val)
+            plt.colorbar()
+            plt.scatter(x,y)
+            plt.ylim(yy.min(),yy.max())
+            plt.xlim(xx.min(),xx.max())
+            if self.logs[0]:
+                plt.xscale('log')
+            if self.logs[1]:
+                plt.yscale('log')
+            plt.xlabel(xlabel)
+            plt.ylabel(ylabel)
+            fig.savefig('{}.png'.format(title))
+        elif len(self.xyz_grids) == 3: 
+            for i in range(self.xyz_grids[2].shape[2]):
+                fig.clear()
+                if transpose:
+                    xx = self.xyz_grids[1][:,:,i].T
+                    yy = self.xyz_grids[0][:,:,i].T
+                    grid = self.grid[:,:,i].real.T
+                else:
+                    xx = self.xyz_grids[0][:,:,i]
+                    yy = self.xyz_grids[1][:,:,i]
+                    grid = self.grid[:,:,i].real
+                biggest_val = np.abs(grid).std()
+                plt.pcolormesh(xx,yy,grid,cmap='RdYlBu_r',vmin=-biggest_val,vmax=biggest_val)
+                plt.colorbar()
+                plt.ylim(yy.min(),yy.max())
+                plt.xlim(xx.min(),xx.max())
+                if self.logs[1]:
+                    plt.xscale('log')
+                if self.logs[0]:
+                    plt.yscale('log')
+                plt.xlabel(xlabel)
+                plt.ylabel(ylabel)
+                plt.title('z = {:.5g}'.format(self.xyz_grids[2][0,0,i]))
+                fig.savefig('{}_{:04d}.png'.format(title,i))
+           
 
