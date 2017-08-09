@@ -141,6 +141,10 @@ class CriticalFinder:
         local_grid = np.empty(my_indices.size,dtype='complex128')
 
         for ii, index in enumerate(my_indices):
+            if self.rank == 0:
+                print("##############################################################")
+                print("###### SOLVING {}/{}".format(ii+1, len(my_indices)))
+                print("##############################################################")
             indices = index2indices(index, dims)
             values = []
             for i, indx in enumerate(indices):
@@ -174,15 +178,16 @@ class CriticalFinder:
         if len(self.xyz_grids) == 2:
             return interpolate.interp2d(self.xyz_grids[0][:,0], self.xyz_grids[1][0,:], self.grid.real.T)
         else:
-            grids = []
-            for i,g in enumerate(self.xyz_grids):
-                indx = '0,'*i + ':' + ',0'*(len(self.xyz_grids)-i-1)
-                string = 'grids.append(self.xyz_grids[i][{}])'.format(indx)
-                exec(string)
-            # TODO: log-scale any axes that are logged before using, here.  This assumes
-            # a regular grid, and our grid is regular in log-space if log=True for a dimension.
-            gross_f = interpolate.RegularGridInterpolator(grids, self.grid.real)
-            return lambda *args: gross_f(args)
+            return interpolate.Rbf(*self.xyz_grids, self.grid.real)
+            #grids = []
+            #for i,g in enumerate(self.xyz_grids):
+            #    indx = '0,'*i + ':' + ',0'*(len(self.xyz_grids)-i-1)
+            #    string = 'grids.append(self.xyz_grids[i][{}])'.format(indx)
+            #    exec(string)
+            ## TODO: log-scale any axes that are logged before using, here.  This assumes
+            ## a regular grid, and our grid is regular in log-space if log=True for a dimension.
+            #gross_f = interpolate.RegularGridInterpolator(grids, self.grid.real)
+            #return lambda *args: gross_f(args)
 
 
 
@@ -275,7 +280,6 @@ class CriticalFinder:
         good_values = [array[0,mask] for array in self.xyz_grids[1:]]
         rroot = self.roots[mask]
 
-
         #Interpolate and find the minimum
         if len(self.xyz_grids) == 2:
             self.root_fn = interpolate.interp1d(good_values[0],rroot,kind='cubic')
@@ -288,9 +292,10 @@ class CriticalFinder:
             result = optimize.minimize_scalar(self.root_fn,bracket=bracket)
             result['success'] = True
         else:
-            print("Creating (N-1)-dimensional interpolant function for root finding. This may take a while...")
-            #TODO: think about making this better, maybe?
-            self.root_fn = interpolate.Rbf(*good_values, rroot)
+            if len(self.xyz_grids) == 3:
+                self.root_fn = interpolate.interp2d(*good_values, rroot)
+            else:
+                self.root_fn = interpolate.Rbf(*good_values, rroot)
             min_func = lambda arr: self.root_fn(*arr)
 
             guess_arg = rroot.argmin()
@@ -317,7 +322,6 @@ class CriticalFinder:
                     freq_interp = interpolate.interp2d(self.yy,self.xx,self.grid.imag.T)
                 else:
                     print("Creating (N)-dimensional interpolant function for frequency finding. This may take a while...")
-                    #TODO: do this as a RegularGridInterpolator
                     freq_interp = interpolate.Rbf(*self.xyz_grids, self.grid.imag)
                 crits.append(freq_interp(*crits)[0])
             else:
