@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 
 from dedalus.tools.cache import CachedAttribute
 
+#TODO: Go through the post-process stuff and say it's not well-implemented in N-dimensions.
+
 def load_balance(dims, nproc):
     """
     Evenly splits up tasks across the specified number of processes
@@ -75,11 +77,21 @@ class CriticalFinder:
     k is a wavenumber and Re is some control parameter (Reynolds or
     Rayleigh or some such number). 
 
-    Inputs: 
-
-    func: a function of two variables (x,y) that provides growth rates
-    at each (x, y). CriticalFinder will find the roots of the growth
-    rate in x for each value of y.
+    Attributes:
+    -----------
+    func:       a function of two variables (x,y) that provides growth rates
+                at each (x, y). CriticalFinder will find the roots of the growth
+                rate in x for each value of y.
+    comm:       The MPI comm group to share jobs across
+    nproc:      The size of comm
+    rank:       The local processor's rank in comm
+    logs:       A list (or NumPy array) of boolean values, each of which corresponds
+                to an input dimension over which the eigenvalue problem is being
+                solved.  "True" dimensions are in log space
+    xyz_grids:  NumPy mesh grids containing the input values of the EVP over which
+                the criticalfinder will search for the critical value.
+    grid:       A NumPy array of complex values, containing the maximum growth rates
+                of the EVP for the corresponding input values.
 
     """
     
@@ -280,7 +292,9 @@ class CriticalFinder:
         exec(nested_loop_string) #This is where the meat of the function actually happens
 
     def crit_finder(self, find_freq=False, method='Powell'):
-        """returns a tuple of the x value at which the minimum (critical value
+        """
+        TODO: fix this docstring
+        returns a tuple of the x value at which the minimum (critical value
         occurs), and the y value. 
 
         output
