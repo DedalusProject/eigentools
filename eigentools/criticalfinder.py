@@ -136,7 +136,6 @@ class CriticalFinder:
         ranges = []
         N = len(mins)
         for i in range(len(mins)):
-            #we start appending at the END, because that makes things make more sense index-wise later
             if self.logs[i]:
                 ranges.append(np.logspace(np.log10(mins[i]), np.log10(maxs[i]),
                                           dims[i], dtype=np.float64))
@@ -155,7 +154,7 @@ class CriticalFinder:
         for ii, index in enumerate(my_indices):
             if self.rank == 0:
                 print("##############################################################")
-                print("###### SOLVING {}/{}".format(ii+1, len(my_indices)))
+                print("###### SOLVING LOCAL EVP {}/{} on process {}".format(ii+1, len(my_indices), self.rank))
                 print("##############################################################")
             indices = index2indices(index, dims)
             values = []
@@ -219,8 +218,7 @@ class CriticalFinder:
 
     def load_grid(self, filename, logs = None):
         """
-        Saves the grids of all input parameters as well as the complex eigenvalue
-        grid that has been solved for.
+        Load a grid file, in the format as created in save_grid.
         """
         infile = h5py.File(filename,'r')
         self.xyz_grids = []
@@ -230,7 +228,8 @@ class CriticalFinder:
                 self.xyz_grids.append(infile['/xyz_{}'.format(count)][:])
                 count += 1
         except:
-            print("Read in {}-dimensional grid".format(len(self.xyz_grids)))
+            print("Successfully read a {}-dimensional grid on process {}".\
+                    format(len(self.xyz_grids), self.rank))
         if logs == None:
             self.logs = np.array([False]*len(self.xyz_grids))
         else:
@@ -239,7 +238,8 @@ class CriticalFinder:
         
     def save_grid(self, filen):
         """
-        Load a grid file, in the format as created in load_grid.
+        Saves the grids of all input parameters as well as the complex eigenvalue
+        grid that has been solved for.
         """
         if self.comm.rank == 0:
             outfile = h5py.File(filen+'.h5','w')
@@ -355,6 +355,38 @@ class CriticalFinder:
             else:
                 crits.append(np.nan)
         return crits
+
+    def exact_crit_finder(self, tol=1e-3, method='Powell', maxiter=200, **kwargs):
+        """
+        Finds the "exact" value of onset.  Runs the self.crit_finder function
+        to get a good initial guess for where the crit is, then uses scipy's
+        optimization routines to find a more precise location of the critical value.
+
+        Inputs:
+        -------
+            tol, method, maxiter -- All inputs to the scipy.optimize.minimize function
+        """
+        crits = self.crit_finder(method=method, **kwargs)
+        if np.isnan(crits[0]):
+            if self.rank == 0:
+                print("crit_finder returned NaN, cannot find exact crit")
+            return crits
+        function = lambda *args: np.abs(self.func(*tuple([i*x for i,x in zip(args[0], crits)])))
+        search_result = optimize.minimize(function, [1.0]*len(self.xyz_grids), 
+                                          tol=tol, options={'maxiter': maxiter})
+        if self.rank == 0:
+            print("Optimize results are as follows:")
+            print(search_result)
+            print("Best values found by optimize: {}".\
+                  format([np.asscalar(x*c) for x,c in zip(search_result.x, crits)])
+        if search_result.success:
+            if self.rank == 0:
+                print('Minimum growth rate of {} found'.format(search_result.fun))
+            return [np.asscalar(x*c) for x,c in zip(search_result.x, crits)]
+        else:
+            if self.rank == 0:
+                print('Optimize results not fully converged, returning crit_finder results.')
+            return crits
 
     def plot_crit(self, title='growth_rates',transpose=False, xlabel = "", ylabel = ""):
         """make a simple plot of the growth rates and critical curve
