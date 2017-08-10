@@ -366,26 +366,24 @@ class CriticalFinder:
         -------
             tol, method, maxiter -- All inputs to the scipy.optimize.minimize function
         """
+        if self.rank != 0:
+            return
         crits = self.crit_finder(method=method, **kwargs)
         if np.isnan(crits[0]):
-            if self.rank == 0:
-                print("crit_finder returned NaN, cannot find exact crit")
+            print("crit_finder returned NaN, cannot find exact crit")
             return crits
         function = lambda *args: np.abs(self.func(*tuple([i*x for i,x in zip(args[0], crits)])))
         search_result = optimize.minimize(function, [1.0]*len(self.xyz_grids), 
                                           tol=tol, options={'maxiter': maxiter})
-        if self.rank == 0:
-            print("Optimize results are as follows:")
-            print(search_result)
-            print("Best values found by optimize: {}".\
-                  format([np.asscalar(x*c) for x,c in zip(search_result.x, crits)])
+        print("Optimize results are as follows:")
+        print(search_result)
+        print("Best values found by optimize: {}".\
+              format([np.asscalar(x*c) for x,c in zip(search_result.x, crits)])
         if search_result.success:
-            if self.rank == 0:
-                print('Minimum growth rate of {} found'.format(search_result.fun))
+            print('Minimum growth rate of {} found'.format(search_result.fun))
             return [np.asscalar(x*c) for x,c in zip(search_result.x, crits)]
         else:
-            if self.rank == 0:
-                print('Optimize results not fully converged, returning crit_finder results.')
+            print('Optimize results not fully converged, returning crit_finder results.')
             return crits
 
     def plot_crit(self, title='growth_rates',transpose=False, xlabel = "", ylabel = ""):
