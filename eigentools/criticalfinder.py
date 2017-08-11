@@ -308,53 +308,62 @@ class CriticalFinder:
         good_values = [array[0,mask] for array in self.xyz_grids[1:]]
         rroot = self.roots[mask]
 
-        #Interpolate and find the minimum
-        if len(self.xyz_grids) == 2:
-            self.root_fn = interpolate.interp1d(good_values[0],rroot,kind='cubic')
-            mid = rroot.argmin()
-            if mid == len(good_values[0])-1 or mid == 0:
-                bracket = good_values[0][0], good_values[0][-1]
-            else:
-                bracket = [good_values[0][0],good_values[0][mid],good_values[0][-1]]
-            
-            result = optimize.minimize_scalar(self.root_fn,bracket=bracket)
-            result['success'] = True
-        else:
-            if len(self.xyz_grids) == 3:
-                self.root_fn = interpolate.interp2d(*good_values, rroot.T)#, kind='cubic')
-            else:
-                self.root_fn = interpolate.Rbf(*good_values, rroot)
-            min_func = lambda arr: self.root_fn(*arr)
-
-            guess_arg = rroot.argmin()
-            init_guess = [arr[guess_arg] for arr in good_values]
-            bound_vals = [(arr.min(), arr.max()) for arr in good_values]
-
-            # Not necessarily sure what the best method is to use here for a general problem.
-            result = optimize.minimize(min_func, init_guess, bounds=bound_vals, method=method)
-
-        #Store the values of parameters at which the minimum occur
-        if result.success:
-            crits = [np.asscalar(result.fun)]
-            try:
-                for x in result.x: crits.append(np.asscalar(x))
-            except:
-                crits.append(np.asscalar(result.x))
-        else:
-            crits = [np.nan]*len(self.xyz_grids)
-       
-        #If looking for the frequency, also get the imaginary value at the crit point
-        if find_freq:
-            if result.success:
-                if len(self.xyz_grids) == 2:
-                    freq_interp = interpolate.interp2d(self.yy,self.xx,self.grid.imag.T)
+        try:
+            #Interpolate and find the minimum
+            if len(self.xyz_grids) == 2:
+                self.root_fn = interpolate.interp1d(good_values[0],rroot,kind='cubic')
+                mid = rroot.argmin()
+                if mid == len(good_values[0])-1 or mid == 0:
+                    bracket = good_values[0][0], good_values[0][-1]
                 else:
-                    print("Creating (N)-dimensional interpolant function for frequency finding. This may take a while...")
-                    freq_interp = interpolate.Rbf(*self.xyz_grids, self.grid.imag)
-                crits.append(freq_interp(*crits)[0])
+                    bracket = [good_values[0][0],good_values[0][mid],good_values[0][-1]]
+                
+                result = optimize.minimize_scalar(self.root_fn,bracket=bracket)
+                # This parameter is missing -- but if we got this far, then we succeeded, rather than crashing
+                result['success'] = True
             else:
-                crits.append(np.nan)
-        return crits
+                if len(self.xyz_grids) == 3:
+                    self.root_fn = interpolate.interp2d(*good_values, rroot.T)#, kind='cubic')
+                else:
+                    self.root_fn = interpolate.Rbf(*good_values, rroot)
+                min_func = lambda arr: self.root_fn(*arr)
+
+                guess_arg = rroot.argmin()
+                init_guess = [arr[guess_arg] for arr in good_values]
+                bound_vals = [(arr.min(), arr.max()) for arr in good_values]
+
+                # Not necessarily sure what the best method is to use here for a general problem.
+                result = optimize.minimize(min_func, init_guess, bounds=bound_vals, method=method)
+
+
+            #Store the values of parameters at which the minimum occur
+            if result.success:
+                crits = [np.asscalar(result.fun)]
+                try:
+                    for x in result.x: crits.append(np.asscalar(x))
+                except:
+                    crits.append(np.asscalar(result.x))
+            else:
+                crits = [np.nan]*len(self.xyz_grids)
+           
+            #If looking for the frequency, also get the imaginary value at the crit point
+            if find_freq:
+                if result.success:
+                    if len(self.xyz_grids) == 2:
+                        freq_interp = interpolate.interp2d(self.yy,self.xx,self.grid.imag.T)
+                    else:
+                        print("Creating (N)-dimensional interpolant function for frequency finding. This may take a while...")
+                        freq_interp = interpolate.Rbf(*self.xyz_grids, self.grid.imag)
+                    crits.append(freq_interp(*crits)[0])
+                else:
+                    crits.append(np.nan)
+            return crits
+        except:
+            if self.rank == 0:
+                print("An error occured while finding the critical value. Root values used are provided.")
+                print("roots for all but first dim: {}".format(good_values))
+                print("roots for first-dim (corresponding to previous array): {}".format(rroot))
+                raise
 
     def exact_crit_finder(self, tol=1e-3, method='Powell', maxiter=200, **kwargs):
         """
@@ -367,7 +376,7 @@ class CriticalFinder:
             tol, method, maxiter -- All inputs to the scipy.optimize.minimize function
         """
         if self.rank != 0:
-            return
+            return [None]*len(self.xyz_grids)
         crits = self.crit_finder(method=method, **kwargs)
         if np.isnan(crits[0]):
             print("crit_finder returned NaN, cannot find exact crit")
@@ -378,7 +387,7 @@ class CriticalFinder:
         print("Optimize results are as follows:")
         print(search_result)
         print("Best values found by optimize: {}".\
-              format([np.asscalar(x*c) for x,c in zip(search_result.x, crits)])
+              format([np.asscalar(x*c) for x,c in zip(search_result.x, crits)]))
         if search_result.success:
             print('Minimum growth rate of {} found'.format(search_result.fun))
             return [np.asscalar(x*c) for x,c in zip(search_result.x, crits)]
