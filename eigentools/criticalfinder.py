@@ -154,7 +154,7 @@ class CriticalFinder:
         for ii, index in enumerate(my_indices):
             if self.rank == 0:
                 print("##############################################################")
-                print("###### SOLVING LOCAL EVP {}/{} on process {}".format(ii+1, len(my_indices), self.rank))
+                print("###### SOLVING LOCAL EVP {}/{} ON PROCESS {}".format(ii+1, len(my_indices), self.rank))
                 print("##############################################################")
             indices = index2indices(index, dims)
             values = []
