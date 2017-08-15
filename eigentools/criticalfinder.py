@@ -88,6 +88,7 @@ class CriticalFinder:
     logs:       A list (or NumPy array) of boolean values, each of which corresponds
                 to an input dimension over which the eigenvalue problem is being
                 solved.  "True" dimensions are in log space
+    N:          The dimensionality of the problem / grid space
     xyz_grids:  NumPy mesh grids containing the input values of the EVP over which
                 the criticalfinder will search for the critical value.
     grid:       A NumPy array of complex values, containing the maximum growth rates
@@ -127,15 +128,18 @@ class CriticalFinder:
             dims = np.array((20, 20, 40))
             logs = np.array((False, False, True))
             obj = CriticalFinder(func, comm)
-            obj.grid_generator(mins, maxs, dims, logs)
+            obj.grid_generator(mins, maxs, dims, logs=logs)
         """
+        # If logs aren't specified, do everything in linear space
         if logs == None:
             self.logs = np.array([False]*len(mins))
         else:
             self.logs = logs
+        
+        # Create parameter mesh grids for EVP solves
         ranges = []
-        N = len(mins)
-        for i in range(len(mins)):
+        self.dims = len(mins)
+        for i in range(self.dims):
             if self.logs[i]:
                 ranges.append(np.logspace(np.log10(mins[i]), np.log10(maxs[i]),
                                           dims[i], dtype=np.float64))
@@ -143,38 +147,37 @@ class CriticalFinder:
                 ranges.append(np.linspace(mins[i], maxs[i], dims[i], 
                                           dtype=np.float64))
         self.xyz_grids = np.meshgrid(*ranges, indexing='ij')
-
         self.grid = np.zeros_like(self.xyz_grids[0])
+        
+        # Split parameter load across processes
         load_indices = load_balance(dims, self.nproc)
         my_indices = load_indices[self.rank]
 
-        # work on parameters
+        # Calculate growth values for local process grid
         local_grid = np.empty(my_indices.size,dtype='complex128')
-
         for ii, index in enumerate(my_indices):
             if self.rank == 0:
-                print("##############################################################")
-                print("###### SOLVING LOCAL EVP {}/{} ON PROCESS {}".format(ii+1, len(my_indices), self.rank))
-                print("##############################################################")
+                print("#######################################################")
+                print("###### SOLVING LOCAL EVP {}/{} ON PROCESS {}".format(\
+                                              ii+1, len(my_indices), self.rank))
+                print("#######################################################")
             indices = index2indices(index, dims)
             values = []
+            # Loop over each dimension to get N correct parameters
             for i, indx in enumerate(indices):
                 zeros_before = i
                 zeros_after = len(indices) - i - 1
                 this_indx = [0]*zeros_before + [indx] + [0]*zeros_after
                 values.append(self.xyz_grids[i][tuple(this_indx)])
-            local_grid[ii] = self.func(*tuple(values))
+            local_grid[ii] = self.func(*tuple(values)) #solve
 
+        # Communicate growth modes across processes
         data = np.empty(dims.prod(), dtype='complex128')
-
         rec_counts = np.array([s.size for s in load_indices])
         displacements = np.cumsum(rec_counts) - rec_counts
-
         self.comm.Gatherv(local_grid,[data,rec_counts,displacements, MPI.F_DOUBLE_COMPLEX])
-
         data = data.reshape(*dims)
         self.comm.Bcast(data, root = 0)
-
         self.grid = data
 
     @CachedAttribute
@@ -187,6 +190,7 @@ class CriticalFinder:
         recreating it.
         """
         if len(self.xyz_grids) == 2:
+            # In two dimensions, interp2d works very well.
             xs, ys = self.xyz_grids[0][:,0], self.xyz_grids[1][0,:]
             if self.logs[0]:
                 xs = np.log10(xs)
@@ -194,21 +198,28 @@ class CriticalFinder:
                 ys = np.log10(ys)
             return interpolate.interp2d(xs, ys, self.grid.real.T)
         else:
+            # In N-dimensions, take advantage of regularly spaced grid
+            # and use RegularGridInterpolator
             grids = []
             for i,g in enumerate(self.xyz_grids):
-                indx = '0,'*i + ':' + ',0'*(len(self.xyz_grids)-i-1)
+                # Run strings which slice out the parameter dimension
+                indx = '0,'*i + ':' + ',0'*(self.N-i-1)
                 if not self.logs[i]:
-                    string = 'grids.append(self.xyz_grids[i][{}])'.format(indx)
+                    string = 'grids.append(g[{}])'.format(indx)
                 else:
-                    string = 'grids.append(np.log10(self.xyz_grids[i][{}]))'.format(indx)
+                    string = 'grids.append(np.log10(g[{}]))'.format(indx)
                 exec(string)
-            unclean_interp = interpolate.RegularGridInterpolator(grids, self.grid.real)
-            return lambda *args: unclean_interp(args)
+            interp = interpolate.RegularGridInterpolator(grids, self.grid.real)
+            return lambda *args: interp(args)
 
     def use_interpolator(self, *args):
         """
-        Paired with the cached interpolator attribute -- properly sets up the logarithm of
-        ingoing data.
+        This function is a wrapper around the cached interpolator attribute.
+        Input data along axes in log-space first have the log10 taken of them,
+        then the interpolator is called on the logged data
+
+        Inputs:
+            *args       - An N-length data point at which to find the grid value.
         """
         args = list(args)
         for i, l in enumerate(self.logs):
@@ -219,51 +230,76 @@ class CriticalFinder:
     def load_grid(self, filename, logs = None):
         """
         Load a grid file, in the format as created in save_grid.
+
+        Inputs:
+        -------
+            filename:   The name of the .h5 file containing the grid data
+            logs:       An N-length array of boolean values, used to
+                        set self.logs.  If None, all axes are in linear space.
         """
-        infile = h5py.File(filename,'r')
-        self.xyz_grids = []
-        try:
-            count = 0
-            while True:
-                self.xyz_grids.append(infile['/xyz_{}'.format(count)][:])
-                count += 1
-        except:
-            print("Successfully read a {}-dimensional grid on process {}".\
-                    format(len(self.xyz_grids), self.rank))
-        if logs == None:
-            self.logs = np.array([False]*len(self.xyz_grids))
-        else:
-            self.logs = logs
-        self.grid = infile['/grid'][:]
+        with h5py.File(filename,'r') as infile:
+            self.xyz_grids = []
+            try:
+                count = 0
+                while True:
+                    self.xyz_grids.append(infile['/xyz_{}'.format(count)][:])
+                    count += 1
+            except:
+                print("Successfully read in a {}-dimensional grid on process {}".\
+                        format(len(self.xyz_grids), self.rank))
+            if logs == None:
+                self.logs = np.array([False]*len(self.xyz_grids))
+            else:
+                self.logs = logs
+            self.grid = infile['/grid'][:]
         
     def save_grid(self, filen):
         """
-        Saves the grids of all input parameters as well as the complex eigenvalue
+        Saves the grids of all input parameters as well as the growth rate
         grid that has been solved for.
+
+        Inputs:
+        -------
+            filen   -- A file stem, which DOES NOT specify the file type. The
+                       grid will be saved to a file called filen.h5
+        Example:
+        --------
+        file_name = 'my_grid'
+        my_cf.save_grid(file_name) #creates a file called my_grid.h5
         """
         if self.comm.rank == 0:
-            outfile = h5py.File(filen+'.h5','w')
-            outfile.create_dataset('grid',data=self.grid)
-            for i, grid in enumerate(self.xyz_grids):
-                outfile.create_dataset('xyz_{}'.format(i),data=grid)
-            outfile.close()
+            with h5py.File(filen+'.h5','w') as outfile:
+                outfile.create_dataset('grid',data=self.grid)
+                for i, grid in enumerate(self.xyz_grids):
+                    outfile.create_dataset('xyz_{}'.format(i),data=grid)
     
     def root_finder(self):
         """
-        For an N-dimensional problem, looking from numbers (a, A) in dim1,
-        (b, B) in dim2, (c, C) in dim3, and so on, finds the value of dim1
-        at which the eigenvalues cross zero for each other combination of values
-        in each other dimension.
+        For an N-dimensional problem, find the grid value at which the first dimension
+        has a corresponding grid value of zero.
 
-        TODO: Make this parallel.  Right now it's a huge (N-1)-dimensional for-loop
+        For example, if you have a 3-dimensional grid of growth rates, and your 
+        3 dimensions have numbers in the range (a, A), (b, B), (c, C), then this
+        function looks at all combinations of values in (b, B) and (c, C), and then
+        for each combination it finds the value in (a, A) at which the growth rate
+        grid passes through zero.  If the grid does not pass through zero in (a, A),
+        then it returns NaN for that combination.
+
+        This function currently dynamically creates a string based on the number
+        of dimensions in the problem, then executes that string in order to find
+        the root values.
+
+        TODO: Parallelize this.  It's currently (N-1) nested for-loops.  It works
+        well for 2- and 3- dimensional problems (and takes negligible human time),
+        but can be improved.
         """
-        # This is mega-ugly, and needs to be improved to work better in N-dimensions than
-        # N-1 nested for-loops.
         self.roots = np.zeros(self.xyz_grids[1].shape[1:])
         nested_loop_string = ""
-        cap_a_char = 65 #chr(65) = A, and we can increment it to get diff characters
-        low_a_char = 97
-        for i in range(len(self.xyz_grids)-1):
+        # Set up some numbers that correspond to known char values --
+        # allows for general variable names in nested loops.
+        cap_a_char, low_a_char = 65, 97
+        for i in range(self.N-1):
+            # Dynamically add all of the needed nested for-loops
             indx = i + 1
             colons_before = indx
             colons_after  = len(self.xyz_grids) - 1 - indx
@@ -271,34 +307,52 @@ class CriticalFinder:
             nested_loop_string += '{}for {},{} in enumerate(self.xyz_grids[{}][{}]):\n'.\
                                             format("\t"*i,chr(cap_a_char+i), chr(low_a_char+i),\
                                                    indx, index_string)
-        indxs = np.arange(len(self.xyz_grids)-1) + cap_a_char
+        # Make lists of dynamic variable names 
+        indxs = np.arange(self.N-1) + cap_a_char
         indxs = [chr(i) for i in indxs]
-        args  = np.arange(len(self.xyz_grids)-1) + low_a_char
+        args  = np.arange(self.N-1) + low_a_char
         args  = [chr(i) for i in args]
+
+        # Make a string that properly indexes the first dimension out.
         indx_str = (len(indxs)*"{},").format(*indxs)
         args_str = (len(args)*"{},").format(*args)
         indx_str, args_str = indx_str[:-1], args_str[:-1]
-        grid_indx_str = ",0"*(len(self.xyz_grids)-1)
+        grid_indx_str = ",0"*(self.N-1)
+
+        # Put it all together in a string, execute the string
         nested_loop_string += """
 {0:}try:
-{0:}    #print(self.use_interpolator(self.xyz_grids[0][0,0], a), self.use_interpolator(self.xyz_grids[0][-1,0],a), self.xyz_grids[0][:,0])
 {0:}    self.roots[{1:}] = optimize.brentq(self.use_interpolator,self.xyz_grids[0][0{3:}],self.xyz_grids[0][-1{3:}],args=({2:}))
 {0:}except ValueError:
 {0:}    self.roots[{1:}] = np.nan
         """.format("\t"*(len(self.xyz_grids)-1), indx_str, args_str, grid_indx_str)
-        #print up string to debug it and make sure it's doing what we expect.
-        #print(nested_loop_string)
-        
-        exec(nested_loop_string) #This is where the meat of the function actually happens
+        exec(nested_loop_string)
 
     def crit_finder(self, find_freq=False, method='Powell'):
         """
-        TODO: fix this docstring
-        returns a tuple of the x value at which the minimum (critical value
-        occurs), and the y value. 
+        Using the root values found in self.root_finder, this function 
+        determines the critical value of the first parameter dimension.
+
+        For example, in a 2-dimensional problem, where your parameters
+        range from (a, A) and (b, B), this function uses the information
+        in roots to figure out the minimum value in (a, A) that contains
+        a root.  It also finds the value in (b, B) that corresponds to 
+        that critical value.
+
+        ***Currently, this function only works for 2- and 3- dimensional grids
+        TODO: Implement in higher dimensions.  interpolate.Rbf is an N-dim
+              interpolator, but doesn't work well.
+
+
+        inputs:
+        ------
+        find_freq       - If True, also return the imaginary component of the
+                          critical value
+        method          - The minimization method to use in 3+ dimensions
 
         output
         ------
+        An N-length tuple of the critical values.  For example, in 2-D,
         (x_crit, y_crit) 
 
         """
@@ -309,8 +363,8 @@ class CriticalFinder:
         rroot = self.roots[mask]
 
         try:
-            #Interpolate and find the minimum
-            if len(self.xyz_grids) == 2:
+            # Interpolate and find the minimum
+            if self.N == 2:
                 self.root_fn = interpolate.interp1d(good_values[0],rroot,kind='cubic')
                 mid = rroot.argmin()
                 if mid == len(good_values[0])-1 or mid == 0:
@@ -319,42 +373,38 @@ class CriticalFinder:
                     bracket = [good_values[0][0],good_values[0][mid],good_values[0][-1]]
                 
                 result = optimize.minimize_scalar(self.root_fn,bracket=bracket)
-                # This parameter is missing -- but if we got this far, then we succeeded, rather than crashing
+                # Often minimize_scalar forgets to return this, but if it doesn't
+                # crash during the optimization, it's a success.
                 result['success'] = True
-            else:
-                if len(self.xyz_grids) == 3:
-                    self.root_fn = interpolate.interp2d(*good_values, rroot.T)#, kind='cubic')
-                else:
-                    self.root_fn = interpolate.Rbf(*good_values, rroot)
+            elif self.N == 3:
+                self.root_fn = interpolate.interp2d(*good_values, rroot.T)#, kind='cubic')
                 min_func = lambda arr: self.root_fn(*arr)
-
                 guess_arg = rroot.argmin()
                 init_guess = [arr[guess_arg] for arr in good_values]
                 bound_vals = [(arr.min(), arr.max()) for arr in good_values]
-
-                # Not necessarily sure what the best method is to use here for a general problem.
                 result = optimize.minimize(min_func, init_guess, bounds=bound_vals, method=method)
+            else:
+                raise Exception("Critical find is not currently implemented in 4+ dimensions")
 
-
-            #Store the values of parameters at which the minimum occur
+            # Store the values of parameters at which the minimum occur
             if result.success:
                 crits = [np.asscalar(result.fun)]
-                try:
+                try: #3+ dims
                     for x in result.x: crits.append(np.asscalar(x))
-                except:
+                except: #2 dims
                     crits.append(np.asscalar(result.x))
             else:
                 crits = [np.nan]*len(self.xyz_grids)
            
-            #If looking for the frequency, also get the imaginary value at the crit point
+            # If looking for the frequency, also get the imaginary value
             if find_freq:
                 if result.success:
-                    if len(self.xyz_grids) == 2:
+                    if self.N == 2:
                         freq_interp = interpolate.interp2d(self.yy,self.xx,self.grid.imag.T)
-                    else:
-                        print("Creating (N)-dimensional interpolant function for frequency finding. This may take a while...")
-                        freq_interp = interpolate.Rbf(*self.xyz_grids, self.grid.imag)
-                    crits.append(freq_interp(*crits)[0])
+                        crits.append(freq_interp(*crits)[0])
+                    elif self.N == 3: 
+                        #In higher dims, just solve at crit to avoid bad interpolants
+                       crits.append(self.func(*crits).imag)
                 else:
                     crits.append(np.nan)
             return crits
@@ -363,7 +413,8 @@ class CriticalFinder:
                 print("An error occured while finding the critical value. Root values used are provided.")
                 print("roots for all but first dim: {}".format(good_values))
                 print("roots for first-dim (corresponding to previous array): {}".format(rroot))
-                raise
+                print("Returning NaN")
+            return [np.nan]*self.N
 
     def exact_crit_finder(self, tol=1e-3, method='Powell', maxiter=200, **kwargs):
         """
@@ -381,13 +432,18 @@ class CriticalFinder:
         if np.isnan(crits[0]):
             print("crit_finder returned NaN, cannot find exact crit")
             return crits
-        function = lambda *args: np.abs(self.func(*tuple([i*x for i,x in zip(args[0], crits)])))
+
+        # Create a lambda function that wraps the object's function, and returns
+        # the absolute value of the growth rate.  Minimize that function.
+        function = lambda *args: np.abs(self.func(*tuple([i*x for i,x in zip(args[0], crits)])).real)
         search_result = optimize.minimize(function, [1.0]*len(self.xyz_grids), 
                                           tol=tol, options={'maxiter': maxiter})
+
         print("Optimize results are as follows:")
         print(search_result)
         print("Best values found by optimize: {}".\
               format([np.asscalar(x*c) for x,c in zip(search_result.x, crits)]))
+
         if search_result.success:
             print('Minimum growth rate of {} found'.format(search_result.fun))
             return [np.asscalar(x*c) for x,c in zip(search_result.x, crits)]
