@@ -399,6 +399,8 @@ class CriticalFinder:
         """make a simple plot of the growth rates and critical curve
 
         """
+        if self.rank != 0:
+            return
         if len(self.xyz_grids) > 3:
             raise Exception("Plot is not implemented for > 2 dimensions")
         fig = plt.figure()
@@ -408,25 +410,36 @@ class CriticalFinder:
                 xx = self.xyz_grids[1].T
                 yy = self.xyz_grids[0].T
                 grid = self.grid.real.T
-                x = self.xyz_grids[1][0,:]
-                y = self.roots
             else:
                 xx = self.xyz_grids[0]
                 yy = self.xyz_grids[1]
                 grid = self.grid.real
-                x = self.roots
-                y = self.xyz_grids[1][0,:]
-                y, x = y[np.isfinite(x)], x[np.isfinite(x)]
             biggest_val = np.abs(grid).std()
             plt.pcolormesh(xx,yy,grid,cmap='RdYlBu_r',vmin=-biggest_val,vmax=biggest_val)
             plt.colorbar()
-            plt.scatter(x,y)
+            try:
+                if transpose:
+                    x = self.xyz_grids[1][0,:]
+                    y = self.roots
+                else:   
+                    x = self.roots
+                    y = self.xyz_grids[1][0,:]
+                    y, x = y[np.isfinite(x)], x[np.isfinite(x)]
+                plt.scatter(x,y)
+            except:
+                print("Cannot plot roots -- maybe they weren't found?")
             plt.ylim(yy.min(),yy.max())
             plt.xlim(xx.min(),xx.max())
-            if self.logs[0]:
-                plt.xscale('log')
-            if self.logs[1]:
-                plt.yscale('log')
+            if transpose:
+                if self.logs[1]:
+                    plt.xscale('log')
+                if self.logs[0]:
+                    plt.yscale('log')
+            else:
+                if self.logs[0]:
+                    plt.xscale('log')
+                if self.logs[1]:
+                    plt.yscale('log')
             plt.xlabel(xlabel)
             plt.ylabel(ylabel)
             fig.savefig('{}.png'.format(title))
