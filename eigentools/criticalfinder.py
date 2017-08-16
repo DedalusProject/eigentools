@@ -247,8 +247,9 @@ class CriticalFinder:
             except:
                 print("Successfully read in a {}-dimensional grid on process {}".\
                         format(len(self.xyz_grids), self.rank))
+            self.N = len(self.xyz_grids)
             if logs == None:
-                self.logs = np.array([False]*len(self.xyz_grids))
+                self.logs = np.array([False]*self.N)
             else:
                 self.logs = logs
             self.grid = infile['/grid'][:]
@@ -451,77 +452,97 @@ class CriticalFinder:
             print('Optimize results not fully converged, returning crit_finder results.')
             return crits
 
-    def plot_crit(self, title='growth_rates',transpose=False, xlabel = "", ylabel = ""):
-        """make a simple plot of the growth rates and critical curve
+    def plot_crit(self, title='growth_rates', transpose=False, xlabel = "", ylabel = ""):
+        """Create a 2D colormap of the grid of growth rates.  If in 3D, create one
+            of these grids for each value in the 3rd dimension.  If available, the
+            root values that have been found will be plotted over the colormap
 
+            Inputs:
+            -------
+            title       - The name of the plot, which will be saved out to "title".png
+            transpose   - If True, plot dim 0 on the y axis and dim 1 on the x axis.
+                          Otherwise, plot it the other way around.
+            xlabel      - The x-label of the plot
+            ylabel      - The y-label of the plot
         """
         if self.rank != 0:
             return
-        if len(self.xyz_grids) > 3:
-            raise Exception("Plot is not implemented for > 2 dimensions")
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        if len(self.xyz_grids) == 2: 
-            if transpose:
-                xx = self.xyz_grids[1].T
-                yy = self.xyz_grids[0].T
-                grid = self.grid.real.T
-            else:
-                xx = self.xyz_grids[0]
-                yy = self.xyz_grids[1]
-                grid = self.grid.real
-            biggest_val = np.abs(grid).std()
-            plt.pcolormesh(xx,yy,grid,cmap='RdYlBu_r',vmin=-biggest_val,vmax=biggest_val)
-            plt.colorbar()
+        if self.N <= 3: 
             try:
-                if transpose:
-                    x = self.xyz_grids[1][0,:]
-                    y = self.roots
-                else:   
-                    x = self.roots
-                    y = self.xyz_grids[1][0,:]
-                    y, x = y[np.isfinite(x)], x[np.isfinite(x)]
-                plt.scatter(x,y)
+                num_iters = self.xyz_grids[2].shape[2]
             except:
-                print("Cannot plot roots -- maybe they weren't found?")
-            plt.ylim(yy.min(),yy.max())
-            plt.xlim(xx.min(),xx.max())
-            if transpose:
-                if self.logs[1]:
-                    plt.xscale('log')
-                if self.logs[0]:
-                    plt.yscale('log')
-            else:
-                if self.logs[0]:
-                    plt.xscale('log')
-                if self.logs[1]:
-                    plt.yscale('log')
-            plt.xlabel(xlabel)
-            plt.ylabel(ylabel)
-            fig.savefig('{}.png'.format(title))
-        elif len(self.xyz_grids) == 3: 
-            for i in range(self.xyz_grids[2].shape[2]):
-                fig.clear()
-                if transpose:
-                    xx = self.xyz_grids[1][:,:,i].T
-                    yy = self.xyz_grids[0][:,:,i].T
-                    grid = self.grid[:,:,i].real.T
-                else:
-                    xx = self.xyz_grids[0][:,:,i]
-                    yy = self.xyz_grids[1][:,:,i]
-                    grid = self.grid[:,:,i].real
-                biggest_val = np.abs(grid).std()
+                num_iters = 1
+            for i in range(num_iters):
+                # Grab out grid data for colormap
+                if self.N == 2:
+                    if transpose:
+                        xx = self.xyz_grids[1].T
+                        yy = self.xyz_grids[0].T
+                        grid = self.grid.real.T
+                    else:
+                        xx = self.xyz_grids[0]
+                        yy = self.xyz_grids[1]
+                        grid = self.grid.real
+                elif self.N == 3:
+                    if transpose:
+                        xx = self.xyz_grids[1][:,:,i].T
+                        yy = self.xyz_grids[0][:,:,i].T
+                        grid = self.grid[:,:,i].real.T
+                    else:
+                        xx = self.xyz_grids[0][:,:,i]
+                        yy = self.xyz_grids[1][:,:,i]
+                        grid = self.grid[:,:,i].real
+
+                # Plot colormap, only plot 2 stdevs off zero
+                biggest_val = 2*np.abs(grid).std()
                 plt.pcolormesh(xx,yy,grid,cmap='RdYlBu_r',vmin=-biggest_val,vmax=biggest_val)
                 plt.colorbar()
+
+                # Grab root data if they're available, plot them.
+                try:
+                    if self.N == 2:
+                        if transpose:
+                            x = self.xyz_grids[1][0,:]
+                            y = self.roots
+                        else:   
+                            x = self.roots
+                            y = self.xyz_grids[1][0,:]
+                    elif self.N == 2:
+                        if transpose:
+                            x = self.xyz_grids[1][0,:]
+                            y = self.roots
+                        else:   
+                            x = self.roots
+                            y = self.xyz_grids[1][0,:]
+                    if transpose:
+                        y, x = y[np.isfinite(y)], x[np.isfinite(y)]
+                    else:
+                        y, x = y[np.isfinite(x)], x[np.isfinite(x)]
+                    plt.scatter(x,y)
+                except:
+                    print("Cannot plot roots -- maybe they weren't found?")
+
+                # Pretty up the plot, save.
                 plt.ylim(yy.min(),yy.max())
                 plt.xlim(xx.min(),xx.max())
-                if self.logs[1]:
-                    plt.xscale('log')
-                if self.logs[0]:
-                    plt.yscale('log')
+                if transpose:
+                    if self.logs[1]:
+                        plt.xscale('log')
+                    if self.logs[0]:
+                        plt.yscale('log')
+                else:
+                    if self.logs[0]:
+                        plt.xscale('log')
+                    if self.logs[1]:
+                        plt.yscale('log')
                 plt.xlabel(xlabel)
                 plt.ylabel(ylabel)
-                plt.title('z = {:.5g}'.format(self.xyz_grids[2][0,0,i]))
-                fig.savefig('{}_{:04d}.png'.format(title,i))
-           
-
+                if self.N == 2:
+                    fig.savefig('{}.png'.format(title))
+                else:
+                    plt.title('z = {:.5g}'.format(self.xyz_grids[2][0,0,i]))
+                    fig.savefig('{}_{:04d}.png'.format(title,i))
+        else:
+            print("Plot is not implemented for > 3 dimensions")
