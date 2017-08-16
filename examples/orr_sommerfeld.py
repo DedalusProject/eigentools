@@ -40,15 +40,26 @@ EP = Eigenproblem(orr_somerfeld)
 # create a shim function to translate (x, y) to the parameters for the eigenvalue problem:
 
 def shim(x,y):
-    gr, indx, freq = EP.growth_rate({"alpha":x,"Re":y})
+    gr, indx, freq = EP.growth_rate({"Re":x,"alpha":y})
     ret = gr+1j*freq
-    return ret
+    if type(ret) == np.ndarray:
+        return ret[0]
+    else:
+        return ret
 
 cf = CriticalFinder(shim, comm)
 
 # generating the grid is the longest part
 start = time.time()
-cf.grid_generator(5500,6000,0.95,1.15,20,20)
+mins = np.array((5500, 0.95))
+maxs = np.array((6000, 1.15))
+nums = np.array((20  , 20))
+try:
+    cf.load_grid('orr_sommerfeld_growth_rates.h5')
+except:
+    cf.grid_generator(mins, maxs, nums)
+    if comm.rank == 0:
+        cf.save_grid('orr_sommerfeld_growth_rates')
 end = time.time()
 if comm.rank == 0:
     print("grid generation time: {:10.5f} sec".format(end-start))
@@ -58,10 +69,9 @@ crit = cf.crit_finder(find_freq = True)
 
 if comm.rank == 0:
     print("crit = {}".format(crit))
-    print("critical wavenumber alpha = {:10.5f}".format(crit[0]))
-    print("critical Re = {:10.5f}".format(crit[1]))
+    print("critical wavenumber alpha = {:10.5f}".format(crit[1]))
+    print("critical Re = {:10.5f}".format(crit[0]))
     print("critical omega = {:10.5f}".format(crit[2]))
 
-    cf.save_grid('orr_sommerfeld_growth_rates')
     cf.plot_crit()
 

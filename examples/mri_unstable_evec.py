@@ -57,7 +57,7 @@ mri.add_bc("right(Bx) = 0")
 # create an Eigenproblem object
 EP = Eigenproblem(mri)
 
-gr, indx = EP.growth_rate({})
+gr, indx, freq = EP.growth_rate({})
 
 EP.solver.set_state(indx)
 

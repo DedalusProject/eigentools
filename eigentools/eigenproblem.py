@@ -26,7 +26,7 @@ class Eigenproblem():
         real part. May acually be a decay rate if there is no growing mode.
         
         also returns the index of the fastest growing mode.  If there are no
-        good eigenvalue, returns nan, None, None.
+        good eigenvalue, returns nan, nan, nan.
         """
         for k,v in params.items():
             # Dedalus workaround: must change values in two places
@@ -38,7 +38,7 @@ class Eigenproblem():
             if reject:
                 self.reject_spurious(tol=tol)
                 if len(self.evalues_good.real) == 0:
-                    return np.nan, None, None
+                    return np.nan, np.nan, np.nan
                 gr_rate = np.max(self.evalues_good.real)
                 gr_indx = self.evalues_good_index[self.evalues_good.real == gr_rate]
                 freq = self.evalues_good[self.evalues_good.real == gr_rate].imag
@@ -51,7 +51,7 @@ class Eigenproblem():
 
         except np.linalg.linalg.LinAlgError:
             print("Eigenvalue solver failed to converge for parameters {}".format(params))
-            return np.nan, None, None
+            return np.nan, np.nan, np.nan
 
     def spectrum(self, title='eigenvalue',spectype='raw'):
         if spectype == 'raw':

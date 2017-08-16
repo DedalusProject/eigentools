@@ -138,8 +138,8 @@ class CriticalFinder:
         
         # Create parameter mesh grids for EVP solves
         ranges = []
-        self.dims = len(mins)
-        for i in range(self.dims):
+        self.N = len(mins)
+        for i in range(self.N):
             if self.logs[i]:
                 ranges.append(np.logspace(np.log10(mins[i]), np.log10(maxs[i]),
                                           dims[i], dtype=np.float64))
@@ -154,7 +154,7 @@ class CriticalFinder:
         my_indices = load_indices[self.rank]
 
         # Calculate growth values for local process grid
-        local_grid = np.empty(my_indices.size,dtype='complex128')
+        local_grid = np.empty(my_indices.size,dtype=np.complex128)
         for ii, index in enumerate(my_indices):
             if self.rank == 0:
                 print("#######################################################")
@@ -169,7 +169,7 @@ class CriticalFinder:
                 zeros_after = len(indices) - i - 1
                 this_indx = [0]*zeros_before + [indx] + [0]*zeros_after
                 values.append(self.xyz_grids[i][tuple(this_indx)])
-            local_grid[ii] = self.func(*tuple(values)) #solve
+            local_grid[ii] = np.complex128(self.func(*tuple(values))) #solve
 
         # Communicate growth modes across processes
         data = np.empty(dims.prod(), dtype='complex128')
@@ -196,7 +196,8 @@ class CriticalFinder:
                 xs = np.log10(xs)
             if self.logs[1]:
                 ys = np.log10(ys)
-            return interpolate.interp2d(xs, ys, self.grid.real.T)
+            xx, yy = np.meshgrid(xs, ys, indexing='ij')
+            return interpolate.interp2d(xx, yy, self.grid.real)
         else:
             # In N-dimensions, take advantage of regularly spaced grid
             # and use RegularGridInterpolator
@@ -389,19 +390,19 @@ class CriticalFinder:
 
             # Store the values of parameters at which the minimum occur
             if result.success:
-                crits = [np.asscalar(result.fun)]
+                crits = [np.asscalar(result['fun'])]
                 try: #3+ dims
-                    for x in result.x: crits.append(np.asscalar(x))
+                    for x in result['x']: crits.append(np.asscalar(x))
                 except: #2 dims
-                    crits.append(np.asscalar(result.x))
+                    crits.append(result['x'])
             else:
-                crits = [np.nan]*len(self.xyz_grids)
+                crits = [np.nan]*self.N
            
             # If looking for the frequency, also get the imaginary value
             if find_freq:
                 if result.success:
                     if self.N == 2:
-                        freq_interp = interpolate.interp2d(self.yy,self.xx,self.grid.imag.T)
+                        freq_interp = interpolate.interp2d(self.xyz_grids[1],self.xyz_grids[0],self.grid.imag.T)
                         crits.append(freq_interp(*crits)[0])
                     elif self.N == 3: 
                         #In higher dims, just solve at crit to avoid bad interpolants
@@ -415,6 +416,7 @@ class CriticalFinder:
                 print("roots for all but first dim: {}".format(good_values))
                 print("roots for first-dim (corresponding to previous array): {}".format(rroot))
                 print("Returning NaN")
+            raise
             return [np.nan]*self.N
 
     def exact_crit_finder(self, tol=1e-3, method='Powell', maxiter=200, **kwargs):
