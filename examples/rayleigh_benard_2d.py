@@ -14,15 +14,15 @@ import numpy as np
 comm = MPI.COMM_WORLD
 
 
-no_slip = True
-stress_free = False
+no_slip = False
+stress_free = True
 file_name = 'rayleigh_benard_growth_rates'
 if no_slip:
     file_name += '_no_slip'
 elif stress_free:
     file_name += '_stress_free'
 
-Nz = 32
+Nz = 16
 z = de.Chebyshev('z',Nz, interval=(0, 1))
 d = de.Domain([z],comm=MPI.COMM_SELF)
 
@@ -31,7 +31,7 @@ rayleigh_benard.parameters['k'] = 3.117 #horizontal wavenumber
 rayleigh_benard.parameters['Ra'] = 1708. #Rayleigh number, rigid-rigid
 rayleigh_benard.parameters['Pr'] = 1  #Prandtl number
 rayleigh_benard.parameters['dzT0'] = 1
-rayleigh_benard.substitutions['dt(A)'] = '-1j*omega*A'
+rayleigh_benard.substitutions['dt(A)'] = 'omega*A'
 rayleigh_benard.substitutions['dx(A)'] = '1j*k*A'
 
 #Boussinesq eqns -- nondimensionalized on thermal diffusion timescale
@@ -55,8 +55,6 @@ rayleigh_benard.add_bc('right(b) = 0')
 #Impenetrable
 rayleigh_benard.add_bc('left(w) = 0')
 rayleigh_benard.add_bc('right(w) = 0')
-#Pressure gauge choice
-#rayleigh_benard.add_bc('integ(p, "z") = 0')
 
 
 if no_slip:
@@ -83,12 +81,12 @@ cf = CriticalFinder(shim, comm)
 # generating the grid is the longest part
 start = time.time()
 if no_slip:
-    mins = np.array((1600, 3.0))
-    maxs = np.array((1800, 3.3))
+    mins = np.array((1000, 2))
+    maxs = np.array((3000, 4))
 elif stress_free:
     #657.5, 2.221
-    mins = np.array((600, 2.0))
-    maxs = np.array((700, 2.4))
+    mins = np.array((400, 1.6))
+    maxs = np.array((1000, 3))
 nums = np.array((20, 20))
 try:
     cf.load_grid('{}.h5'.format(file_name))
@@ -96,6 +94,7 @@ except:
     cf.grid_generator(mins, maxs, nums)
     if comm.rank == 0:
         cf.save_grid(file_name)
+cf.plot_crit(title=file_name, transpose=True, xlabel='kx', ylabel='Ra')
 
 end = time.time()
 if comm.rank == 0:
@@ -110,5 +109,5 @@ if comm.rank == 0:
     print("critical Ra = {:10.5f}".format(crit[0]))
     print("critical freq = {:10.5f}".format(crit[2]))
 
-    cf.plot_crit()
+    cf.plot_crit(title=file_name, transpose=True, xlabel='kx', ylabel='Ra')
 
