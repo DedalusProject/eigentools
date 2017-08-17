@@ -379,7 +379,7 @@ class CriticalFinder:
                 # crash during the optimization, it's a success.
                 result['success'] = True
             elif self.N == 3:
-                self.root_fn = interpolate.interp2d(*good_values, rroot.T)#, kind='cubic')
+                self.root_fn = interpolate.interp2d(*good_values, rroot, kind='cubic')
                 min_func = lambda arr: self.root_fn(*arr)
                 guess_arg = rroot.argmin()
                 init_guess = [arr[guess_arg] for arr in good_values]
@@ -392,7 +392,7 @@ class CriticalFinder:
             if result.success:
                 crits = [np.asscalar(result['fun'])]
                 try: #3+ dims
-                    for x in result['x']: crits.append(np.asscalar(x))
+                    for i, x in enumerate(result['x']): crits.append(np.asscalar(x))
                 except: #2 dims
                     crits.append(result['x'])
             else:
@@ -469,14 +469,14 @@ class CriticalFinder:
         """
         if self.rank != 0:
             return
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
         if self.N <= 3: 
             try:
                 num_iters = self.xyz_grids[2].shape[2]
             except:
                 num_iters = 1
             for i in range(num_iters):
+                fig = plt.figure()
+                ax = fig.add_subplot(111)
                 # Grab out grid data for colormap
                 if self.N == 2:
                     if transpose:
@@ -507,16 +507,16 @@ class CriticalFinder:
                     if self.N == 2:
                         if transpose:
                             x = self.xyz_grids[1][0,:]
-                            y = self.roots
+                            y = self.roots[:,i]
                         else:   
-                            x = self.roots
+                            x = self.roots[:,i]
                             y = self.xyz_grids[1][0,:]
                     elif self.N == 3:
                         if transpose:
                             x = self.xyz_grids[1][0,:,0]
-                            y = self.roots
+                            y = self.roots[:,i]
                         else:   
-                            x = self.roots
+                            x = self.roots[:,i]
                             y = self.xyz_grids[1][0,:,0]
                     if transpose:
                         y, x = y[np.isfinite(y)], x[np.isfinite(y)]
@@ -546,5 +546,6 @@ class CriticalFinder:
                 else:
                     plt.title('z = {:.5g}'.format(self.xyz_grids[2][0,0,i]))
                     fig.savefig('{}_{:04d}.png'.format(title,i))
+                plt.close(fig)
         else:
             print("Plot is not implemented for > 3 dimensions")
