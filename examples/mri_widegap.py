@@ -13,7 +13,7 @@ comm = MPI.COMM_WORLD
 
 
 # Define the widegap MRI problem in Dedalus: 
-nr = 50
+nr = 32
 
 R1 = 5
 R2 = 15
@@ -100,18 +100,23 @@ EP = Eigenproblem(widegap)
 
 # create a shim function to translate (x, y) to the parameters for the eigenvalue problem:
 def shim(x,y):
-    gr, indx = EP.growth_rate({"k":x,"Rm":y})
-    return gr
+    gr, indx, freq = EP.growth_rate({"Rm":x,"k":y})
+    val = gr + 1j*freq
+    if type(val) == np.ndarray:
+        return val[0]
+    else:
+        return val
 
 cf = CriticalFinder(shim, comm)
 
 # generating the grid is the longest part
 start = time.time()
 gridl = 10
-#cf.grid_generator(0.5, 2.0, 0.0001, 0.001, gridl, gridl)
-cf.grid_generator(0.5, 2.0, 0.001, 0.1, gridl, gridl) # Rm = (0.5, 2.0); k = (0.001, 0.1) is not a bracketing interval for Pm = 1E-4. neither is (0.5, 2.0, 0.0001, 0.001)
-#cf.grid_generator(0.5, 1.1, 0.005, 0.025, gridl, gridl)
-#cf.grid_generator(0.8, 0.9, 0.014, 0.02, gridl, gridl)
+mins = np.array((0.5, 0.001))
+maxs = np.array((2.0, 0.1))
+num  = np.array((gridl, gridl))
+logs = np.array((False, True))
+cf.grid_generator(mins, maxs, num, logs) # Rm = (0.5, 2.0); k = (0.001, 0.1) is not a bracketing interval for Pm = 1E-4. neither is (0.5, 2.0, 0.0001, 0.001)
 end = time.time()
 if comm.rank == 0:
     print("grid generation time: {:10.5f} sec".format(end-start))
