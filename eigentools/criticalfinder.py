@@ -511,13 +511,13 @@ class CriticalFinder:
                         else:   
                             x = self.roots
                             y = self.xyz_grids[1][0,:]
-                    elif self.N == 2:
+                    elif self.N == 3:
                         if transpose:
-                            x = self.xyz_grids[1][0,:]
+                            x = self.xyz_grids[1][0,:,0]
                             y = self.roots
                         else:   
                             x = self.roots
-                            y = self.xyz_grids[1][0,:]
+                            y = self.xyz_grids[1][0,:,0]
                     if transpose:
                         y, x = y[np.isfinite(y)], x[np.isfinite(y)]
                     else:
