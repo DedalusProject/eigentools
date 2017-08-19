@@ -4,16 +4,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 class Eigenproblem():
-    def __init__(self, EVP):
+    def __init__(self, EVP, sparse=False):
         """
         EVP is dedalus EVP object
         """
         self.EVP = EVP
         self.solver = EVP.build_solver()
+        self.sparse = sparse
         
     def solve(self, pencil=0):
         self.pencil = pencil
-        self.solver.solve(self.solver.pencils[self.pencil], rebuild_coeffs=True)
+
+        if self.sparse:
+            self.solver.solve_sparse(self.solver.pencils[self.pencil], N=10, target=0, rebuild_coeffs=True)
+        else:
+            self.solver.solve(self.solver.pencils[self.pencil], rebuild_coeffs=True)
         self.evalues = self.solver.eigenvalues
             
     def process_evalues(self, ev):
@@ -133,7 +138,10 @@ class Eigenproblem():
             self.EVP_hires.add_bc(b['raw_equation'])
 
         solver = self.EVP_hires.build_solver()
-        solver.solve(solver.pencils[self.pencil], rebuild_coeffs=True)
+        if self.sparse:
+            solver.solve_sparse(solver.pencils[self.pencil], N=10, target=0, rebuild_coeffs=True)
+        else:
+            solver.solve(solver.pencils[self.pencil], rebuild_coeffs=True)
         self.evalues_hires = solver.eigenvalues
 
     def discard_spurious_eigenvalues(self):

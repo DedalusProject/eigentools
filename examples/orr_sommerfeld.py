@@ -35,7 +35,7 @@ orr_somerfeld.add_bc('left(wz) = 0')
 orr_somerfeld.add_bc('right(wz) = 0')
 
 # create an Eigenproblem object
-EP = Eigenproblem(orr_somerfeld)
+EP = Eigenproblem(orr_somerfeld, sparse=True)
 
 # create a shim function to translate (x, y) to the parameters for the eigenvalue problem:
 
