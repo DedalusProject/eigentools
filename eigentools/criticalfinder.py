@@ -120,8 +120,7 @@ class CriticalFinder:
         #print("interpolating over yyroot ", yy_root, "and rroot", rroot)
         self.root_fn = interpolate.interp1d(yy_root,rroot,kind='cubic')
         
-        mid = yy_root.shape[0]/2
-        
+        mid = int(yy_root.shape[0]/2)
         bracket = [yy_root[0],yy_root[mid],yy_root[-1]]
         
         self.opt = optimize.minimize_scalar(self.root_fn,bracket=bracket)
@@ -156,7 +155,7 @@ class CriticalFinder:
             x = self.roots
             y = self.yy[:,0]
 
-        plt.pcolormesh(xx,yy,grid,cmap='autumn')#,vmin=-1,vmax=1)
+        plt.pcolormesh(xx,yy,grid.real,cmap='autumn')#,vmin=-1,vmax=1)
         plt.colorbar()
         plt.scatter(x,y)
         plt.ylim(yy.min(),yy.max())
