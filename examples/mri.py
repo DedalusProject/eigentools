@@ -53,7 +53,7 @@ mri.add_bc("left(Bx) = 0")
 mri.add_bc("right(Bx) = 0")
 
 # create an Eigenproblem object
-EP = Eigenproblem(mri)
+EP = Eigenproblem(mri, sparse=True)
 
 # create a shim function to translate (x, y) to the parameters for the eigenvalue problem:
 def shim(x,y):
