@@ -1,5 +1,5 @@
-"""finds the critical Renoylds number and wave number for the
-Orr-Somerfeld eigenvalue equation.
+"""finds the critical magnetic Renoylds number and wave number for the
+MRI eigenvalue equation.
 
 """
 import sys
@@ -57,23 +57,26 @@ EP = Eigenproblem(mri)
 
 # create a shim function to translate (x, y) to the parameters for the eigenvalue problem:
 def shim(x,y):
-        gr, indx = EP.growth_rate({"alpha":x,"Re":y})
-    return gr
+    iRm = 1/y
+    iRe = (iRm*Pm)
+    print("Rm = {}; Re = {}; Pm = {}".format(1/iRm, 1/iRe, Pm))
+    gr, indx, freq = EP.growth_rate({"Q":x,"iRm":iRm,"iR":iRe})
+    ret = gr+1j*freq
+    return ret
 
 cf = CriticalFinder(shim, comm)
 
 # generating the grid is the longest part
 start = time.time()
-cf.grid_generator(4.6,5.0,0.74,0.76,4,4)
+cf.grid_generator(4.6,5.5,0.5,1.5,10,10)
 end = time.time()
 print("grid generation time: {:10.5f} sec".format(end-start))
 
 cf.root_finder()
-crit = cf.crit_finder()
+crit = cf.crit_finder(find_freq=True)
 
 if comm.rank == 0:
     print("critical wavenumber alpha = {:10.5f}".format(crit[0]))
     print("critical Re = {:10.5f}".format(crit[1]))
-
     cf.plot_crit()
     cf.save_grid('mri_growth_rates')
