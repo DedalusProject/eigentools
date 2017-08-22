@@ -507,9 +507,9 @@ class CriticalFinder:
                     if self.N == 2:
                         if transpose:
                             x = self.xyz_grids[1][0,:]
-                            y = self.roots[:,i]
+                            y = self.roots[:]
                         else:   
-                            x = self.roots[:,i]
+                            x = self.roots[:]
                             y = self.xyz_grids[1][0,:]
                     elif self.N == 3:
                         if transpose:
@@ -524,6 +524,7 @@ class CriticalFinder:
                         y, x = y[np.isfinite(x)], x[np.isfinite(x)]
                     plt.scatter(x,y)
                 except:
+                    raise
                     print("Cannot plot roots -- maybe they weren't found?")
 
                 # Pretty up the plot, save.
