@@ -206,9 +206,9 @@ class CriticalFinder:
                 # Run strings which slice out the parameter dimension
                 indx = [0]*i + [range(g.shape[i])] + [0]*(self.N-i-1)
                 if not self.logs[i]:
-                    grids.append(g[indx]).format(indx)
+                    grids.append(g[indx])
                 else:
-                    grids.append(np.log10(g[indx])).format(indx)
+                    grids.append(np.log10(g[indx]))
             interp = interpolate.RegularGridInterpolator(grids, self.grid.real)
             return lambda *args: interp(args)
 
