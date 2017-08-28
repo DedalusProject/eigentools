@@ -238,12 +238,9 @@ class CriticalFinder:
                         set self.logs.  If None, all axes are in linear space.
         """
         with h5py.File(filename,'r') as infile:
-            self.xyz_grids = []
-            good_keys = [k.name for k in infile.values() if 'xyz' in k.name]
-            self.N = len(good_keys)
-            print("Reading in an {}-dimensional grid".format(self.N))
-            for k in good_keys:
-                self.xyz_grids.append(infile[k][:])
+            self.xyz_grids = [k.value for k in infile.values() if 'xyz' in k.name]
+            self.N = len(self.xyz_grids)
+            print("Read an {}-dimensional grid".format(self.N))
             self.grid = infile['/grid'][:]
         if logs == None:
             self.logs = np.array([False]*self.N)
