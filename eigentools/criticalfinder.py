@@ -204,12 +204,11 @@ class CriticalFinder:
             grids = []
             for i,g in enumerate(self.xyz_grids):
                 # Run strings which slice out the parameter dimension
-                indx = '0,'*i + ':' + ',0'*(self.N-i-1)
+                indx = [0]*i + [range(g.shape[i])] + [0]*(self.N-i-1)
                 if not self.logs[i]:
-                    string = 'grids.append(g[{}])'.format(indx)
+                    grids.append(g[indx]).format(indx)
                 else:
-                    string = 'grids.append(np.log10(g[{}]))'.format(indx)
-                exec(string)
+                    grids.append(np.log10(g[indx])).format(indx)
             interp = interpolate.RegularGridInterpolator(grids, self.grid.real)
             return lambda *args: interp(args)
 
