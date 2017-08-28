@@ -239,20 +239,16 @@ class CriticalFinder:
         """
         with h5py.File(filename,'r') as infile:
             self.xyz_grids = []
-            try:
-                count = 0
-                while True:
-                    self.xyz_grids.append(infile['/xyz_{}'.format(count)][:])
-                    count += 1
-            except:
-                print("Successfully read in a {}-dimensional grid on process {}".\
-                        format(len(self.xyz_grids), self.rank))
-            self.N = len(self.xyz_grids)
-            if logs == None:
-                self.logs = np.array([False]*self.N)
-            else:
-                self.logs = logs
+            good_keys = [k.name for k in infile.values() if 'xyz' in k.name]
+            self.N = len(good_keys)
+            print("Reading in an {}-dimensional grid".format(self.N))
+            for k in good_keys:
+                self.xyz_grids.append(infile[k][:])
             self.grid = infile['/grid'][:]
+        if logs == None:
+            self.logs = np.array([False]*self.N)
+        else:
+            self.logs = logs
         
     def save_grid(self, filen):
         """
