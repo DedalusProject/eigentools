@@ -287,40 +287,19 @@ class CriticalFinder:
         well for 2- and 3- dimensional problems (and takes negligible human time),
         but can be improved.
         """
-        self.roots = np.zeros(self.xyz_grids[1].shape[1:])
-        nested_loop_string = ""
-        # Set up some numbers that correspond to known char values --
-        # allows for general variable names in nested loops.
-        cap_a_char, low_a_char = 65, 97
-        for i in range(self.N-1):
-            # Dynamically add all of the needed nested for-loops
-            indx = i + 1
-            colons_before = indx
-            colons_after  = len(self.xyz_grids) - 1 - indx
-            index_string = "0,"*colons_before + ":" + ",0"*colons_after
-            nested_loop_string += '{}for {},{} in enumerate(self.xyz_grids[{}][{}]):\n'.\
-                                            format("\t"*i,chr(cap_a_char+i), chr(low_a_char+i),\
-                                                   indx, index_string)
-        # Make lists of dynamic variable names 
-        indxs = np.arange(self.N-1) + cap_a_char
-        indxs = [chr(i) for i in indxs]
-        args  = np.arange(self.N-1) + low_a_char
-        args  = [chr(i) for i in args]
-
-        # Make a string that properly indexes the first dimension out.
-        indx_str = (len(indxs)*"{},").format(*indxs)
-        args_str = (len(args)*"{},").format(*args)
-        indx_str, args_str = indx_str[:-1], args_str[:-1]
-        grid_indx_str = ",0"*(self.N-1)
-
-        # Put it all together in a string, execute the string
-        nested_loop_string += """
-{0:}try:
-{0:}    self.roots[{1:}] = optimize.brentq(self.use_interpolator,self.xyz_grids[0][0{3:}],self.xyz_grids[0][-1{3:}],args=({2:}))
-{0:}except ValueError:
-{0:}    self.roots[{1:}] = np.nan
-        """.format("\t"*(len(self.xyz_grids)-1), indx_str, args_str, grid_indx_str)
-        exec(nested_loop_string)
+        n_root_vals = np.prod(self.xyz_grids[0].shape[1:])
+        self.roots = np.zeros(n_root_vals)
+        for i in range(n_root_vals):
+            indices = index2indices(i, self.xyz_grids[0].shape[1:])
+            first_indx = tuple([0] + indices)
+            last_indx  = tuple([-1] + indices)
+            args = [self.xyz_grids[i+1][first_indx] for i in range(self.N-1)]
+            try:
+                self.roots[i] = optimize.brentq(self.use_interpolator, self.xyz_grids[0][first_indx],
+                                                self.xyz_grids[0][last_indx], args=tuple(args))
+            except ValueError:
+                self.roots[i] = np.nan
+        self.roots.reshape(self.xyz_grids[0].shape[1:])
 
     def crit_finder(self, find_freq=False, method='Powell'):
         """
