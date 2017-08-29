@@ -6,11 +6,9 @@ import matplotlib.pyplot as plt
 
 from dedalus.tools.cache import CachedAttribute
 
-#TODO: Go through the post-process stuff and say it's not well-implemented in N-dimensions.
-
 def load_balance(dims, nproc):
     """
-    Evenly splits up tasks across the specified number of processes
+    Evenly splits up tasks across the specified number of processes.
 
     Inputs:
     -------
@@ -20,7 +18,8 @@ def load_balance(dims, nproc):
     
     Outputs:
     --------
-        An array of arrays, each containing the task "numbers" for each process.
+        An array of arrays, where the 0th array contains the task indices for the
+        0th process, and so on.
 
     Example:
     -------
@@ -272,20 +271,12 @@ class CriticalFinder:
         For an N-dimensional problem, find the grid value at which the first dimension
         has a corresponding grid value of zero.
 
-        For example, if you have a 3-dimensional grid of growth rates, and your 
-        3 dimensions have numbers in the range (a, A), (b, B), (c, C), then this
-        function looks at all combinations of values in (b, B) and (c, C), and then
-        for each combination it finds the value in (a, A) at which the growth rate
+        For example, in a 3-dimensional grid of growth rates, and with the
+        3 dimensions ranging over (a, A), (b, B), and (c, C), this
+        function looks at all combinations of values in (b, B) and (c, C).  For
+        each combination, it finds the value in (a, A) at which the growth rate
         grid passes through zero.  If the grid does not pass through zero in (a, A),
         then it returns NaN for that combination.
-
-        This function currently dynamically creates a string based on the number
-        of dimensions in the problem, then executes that string in order to find
-        the root values.
-
-        TODO: Parallelize this.  It's currently (N-1) nested for-loops.  It works
-        well for 2- and 3- dimensional problems (and takes negligible human time),
-        but can be improved.
         """
         n_root_vals = np.prod(self.xyz_grids[0].shape[1:])
         self.roots = np.zeros(n_root_vals)
