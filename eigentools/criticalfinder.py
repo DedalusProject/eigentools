@@ -297,9 +297,9 @@ class CriticalFinder:
         Using the root values found in self.root_finder, this function 
         determines the critical value of the first parameter dimension.
 
-        For example, in a 2-dimensional problem, where your parameters
+        For example, in a 2-dimensional problem, where the parameters
         range from (a, A) and (b, B), this function uses the information
-        in roots to figure out the minimum value in (a, A) that contains
+        in roots to figure out the minimum value in the range (a, A) that contains
         a root.  It also finds the value in (b, B) that corresponds to 
         that critical value.
 
