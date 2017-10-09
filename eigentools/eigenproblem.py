@@ -49,12 +49,16 @@ class Eigenproblem():
                 gr_rate = np.max(self.evalues.real)
                 gr_indx = np.where[self.evalues.real == gr_rate][0][0]
                 freq = self.evalues[gr_index].imag
-                
+
             return gr_rate, gr_indx[0], freq
 
         except np.linalg.linalg.LinAlgError:
             print("Eigenvalue solver failed to converge for parameters {}".format(params))
             return np.nan, np.nan, np.nan
+        except: #This gets triggered in sparse matrices
+#            print("Eigenvalue solver failed to converge for parameters {}".format(params))
+            return np.nan, np.nan, np.nan
+            
 
     def spectrum(self, title='eigenvalue',spectype='raw'):
         if spectype == 'raw':

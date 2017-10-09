@@ -196,7 +196,10 @@ class CriticalFinder:
             if self.logs[1]:
                 ys = np.log10(ys)
             xx, yy = np.meshgrid(xs, ys, indexing='ij')
-            return interpolate.interp2d(xx, yy, self.grid.real)
+            good_is = np.isfinite(self.grid.real)
+            xs, ys, zs = xx[good_is], yy[good_is], self.grid.real[good_is]
+            return interpolate.interp2d(xs, ys, zs)
+            #return interpolate.interp2d(xx, yy, self.grid.real)
         else:
             # In N-dimensions, take advantage of regularly spaced grid
             # and use RegularGridInterpolator
