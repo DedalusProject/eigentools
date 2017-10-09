@@ -1,6 +1,11 @@
-"""finds the critical Renoylds number and wave number for the
+"""finds the critical Renoylds number, wave number, and frequency for the
 Orr-Somerfeld eigenvalue equation.
 
+NB: This formulation uses a slightly different scaling of the eigenvalue than Orszag (1971). In order to convert, use 
+
+sigma = -1j*alpha*Re*lambda,
+
+where sigma is our eigenvalue and Lambda is Orszag's.
 
 """
 import matplotlib
@@ -35,7 +40,7 @@ orr_somerfeld.add_bc('left(wz) = 0')
 orr_somerfeld.add_bc('right(wz) = 0')
 
 # create an Eigenproblem object
-EP = Eigenproblem(orr_somerfeld)
+EP = Eigenproblem(orr_somerfeld, sparse=True)
 
 # create a shim function to translate (x, y) to the parameters for the eigenvalue problem:
 
@@ -73,5 +78,6 @@ if comm.rank == 0:
     print("critical Re = {:10.5f}".format(crit[0]))
     print("critical omega = {:10.5f}".format(crit[2]))
 
+    cf.save_grid('orr_sommerfeld_growth_rates')
     cf.plot_crit()
 

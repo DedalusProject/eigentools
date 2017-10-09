@@ -1,5 +1,5 @@
-"""finds the critical Renoylds number and wave number for the
-Orr-Somerfeld eigenvalue equation.
+"""finds the critical magnetic Renoylds number and wave number for the
+MRI eigenvalue equation.
 
 """
 import sys
@@ -15,7 +15,7 @@ comm = MPI.COMM_WORLD
 
 # Define the MRI problem in Dedalus: 
 
-x = de.Chebyshev('x',32)
+x = de.Chebyshev('x',64)
 d = de.Domain([x],comm=MPI.COMM_SELF)
 
 mri = de.EVP(d,['psi','u', 'A', 'B', 'psix', 'psixx', 'psixxx', 'ux', 'Ax', 'Bx'],'sigma')
@@ -25,12 +25,8 @@ Rm = 4.879
 Pm = 0.001
 mri.parameters['q'] = 1.5
 mri.parameters['beta'] = 25.0
-mri.parameters['Re'] = Rm
-mri.parameters['Pr'] = Pm
-mri.substitutions['iR'] = '(Pr/Re)'
-mri.substitutions['iRm'] = '(1./Re)'
-#mri.parameters['iR'] = Pm/Rm
-#mri.parameters['iRm'] = 1./Rm
+mri.parameters['iR'] = Pm/Rm
+mri.parameters['iRm'] = 1./Rm
 mri.parameters['Q'] = 0.748
 
 mri.add_equation("sigma*psixx - Q**2*sigma*psi - iR*dx(psixxx) + 2*iR*Q**2*psixx - iR*Q**4*psi - 2*1j*Q*u - (2/beta)*1j*Q*dx(Ax) + (2/beta)*Q**3*1j*A = 0")
@@ -57,21 +53,25 @@ mri.add_bc("left(Bx) = 0")
 mri.add_bc("right(Bx) = 0")
 
 # create an Eigenproblem object
-EP = Eigenproblem(mri)
+EP = Eigenproblem(mri, sparse=True)
 
 # create a shim function to translate (x, y) to the parameters for the eigenvalue problem:
 def shim(x,y):
-    gr, indx, freq = EP.growth_rate({"Re":x,"Q":y})
-    return gr
+    iRm = 1/x
+    iRe = (iRm*Pm)
+    print("Rm = {}; Re = {}; Pm = {}".format(1/iRm, 1/iRe, Pm))
+    gr, indx, freq = EP.growth_rate({"Q":y,"iRm":iRm,"iR":iRe})
+    ret = gr+1j*freq
+    return ret
 
 cf = CriticalFinder(shim, comm)
 
 # generating the grid is the longest part
 start = time.time()
-mins = np.array((1, 0.7))
-maxs = np.array((12, 0.9))
+mins = np.array((4.6, 0.5))
+maxs = np.array((5.5, 1.5))
 ns   = np.array((10,10))
-logs = np.array((True, False))
+logs = np.array((False, False))
 #cf.load_grid('mri_growth_rates.h5')
 cf.grid_generator(mins, maxs, ns, logs=logs)
 if comm.rank == 0:
@@ -80,12 +80,10 @@ end = time.time()
 print("grid generation time: {:10.5f} sec".format(end-start))
 
 cf.root_finder()
-print(cf.roots)
-crit = cf.crit_finder()
+crit = cf.crit_finder(find_freq=True)
 
 if comm.rank == 0:
     print("critical wavenumber alpha = {:10.5f}".format(crit[0]))
     print("critical Re = {:10.5f}".format(crit[1]))
-
     cf.plot_crit()
     cf.save_grid('mri_growth_rates')

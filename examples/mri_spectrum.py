@@ -52,7 +52,7 @@ mri.add_bc("left(Bx) = 0")
 mri.add_bc("right(Bx) = 0")
 
 # create an Eigenproblem object
-EP = Eigenproblem(mri)
+EP = Eigenproblem(mri,sparse=True)
 
 gr, idx, freq = EP.growth_rate({})
 print("MRI growth rate = {0:10.5e}".format(gr))
