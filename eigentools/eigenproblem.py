@@ -20,7 +20,7 @@ class Eigenproblem():
         if self.sparse:
             self.solver.solve_sparse(self.solver.pencils[self.pencil], N=10, target=0, rebuild_coeffs=True)
         else:
-            self.solver.solve(self.solver.pencils[self.pencil], rebuild_coeffs=True)
+            self.solver.solve_dense(self.solver.pencils[self.pencil], rebuild_coeffs=True)
         self.evalues = self.solver.eigenvalues
             
     def process_evalues(self, ev):
@@ -168,7 +168,7 @@ class Eigenproblem():
         if self.sparse:
             solver.solve_sparse(solver.pencils[self.pencil], N=10, target=0, rebuild_coeffs=True)
         else:
-            solver.solve(solver.pencils[self.pencil], rebuild_coeffs=True)
+            solver.solve_dense(solver.pencils[self.pencil], rebuild_coeffs=True)
         self.evalues_hires = solver.eigenvalues
 
     def discard_spurious_eigenvalues(self):
