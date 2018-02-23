@@ -244,7 +244,7 @@ class CriticalFinder:
             self.N = len(self.xyz_grids)
             print("Read an {}-dimensional grid".format(self.N))
             self.grid = infile['/grid'][:]
-        if logs == None:
+        if logs is None:
             self.logs = np.array([False]*self.N)
         else:
             self.logs = logs
@@ -351,7 +351,7 @@ class CriticalFinder:
                 bound_vals = [(arr.min(), arr.max()) for arr in good_values]
                 result = optimize.minimize(min_func, init_guess, bounds=bound_vals, method=method)
             else:
-                raise Exception("Critical find is not currently implemented in 4+ dimensions")
+                raise ValueError("Critical find is not currently implemented in 4+ dimensions")
 
             # Store the values of parameters at which the minimum occur
             if result.success:
@@ -384,9 +384,9 @@ class CriticalFinder:
             raise
             return [np.nan]*self.N
 
-    def exact_crit_finder(self, tol=1e-3, method='Powell', maxiter=200, **kwargs):
+    def critical_polisher(self, tol=1e-3, method='Powell', maxiter=200, **kwargs):
         """
-        Finds the "exact" value of onset.  Runs the self.crit_finder function
+        Polishes the critical value.  Runs the self.crit_finder function
         to get a good initial guess for where the crit is, then uses scipy's
         optimization routines to find a more precise location of the critical value.
 
@@ -435,9 +435,9 @@ class CriticalFinder:
         if self.rank != 0:
             return
         if self.N <= 3: 
-            try:
+            if len(self.xyz_grids) == 3:
                 num_iters = self.xyz_grids[2].shape[2]
-            except:
+            else:
                 num_iters = 1
             for i in range(num_iters):
                 fig = plt.figure()
@@ -468,29 +468,25 @@ class CriticalFinder:
                 plt.colorbar()
 
                 # Grab root data if they're available, plot them.
-                try:
-                    if self.N == 2:
-                        if transpose:
-                            x = self.xyz_grids[1][0,:]
-                            y = self.roots[:]
-                        else:   
-                            x = self.roots[:]
-                            y = self.xyz_grids[1][0,:]
-                    elif self.N == 3:
-                        if transpose:
-                            x = self.xyz_grids[1][0,:,0]
-                            y = self.roots[:,i]
-                        else:   
-                            x = self.roots[:,i]
-                            y = self.xyz_grids[1][0,:,0]
+                if self.N == 2:
                     if transpose:
-                        y, x = y[np.isfinite(y)], x[np.isfinite(y)]
-                    else:
-                        y, x = y[np.isfinite(x)], x[np.isfinite(x)]
-                    plt.scatter(x,y)
-                except:
-                    raise
-                    print("Cannot plot roots -- maybe they weren't found?")
+                        x = self.xyz_grids[1][0,:]
+                        y = self.roots[:]
+                    else:   
+                        x = self.roots[:]
+                        y = self.xyz_grids[1][0,:]
+                elif self.N == 3:
+                    if transpose:
+                        x = self.xyz_grids[1][0,:,0]
+                        y = self.roots[:,i]
+                    else:   
+                        x = self.roots[:,i]
+                        y = self.xyz_grids[1][0,:,0]
+                if transpose:
+                    y, x = y[np.isfinite(y)], x[np.isfinite(y)]
+                else:
+                    y, x = y[np.isfinite(x)], x[np.isfinite(x)]
+                plt.scatter(x,y)
 
                 # Pretty up the plot, save.
                 plt.ylim(yy.min(),yy.max())

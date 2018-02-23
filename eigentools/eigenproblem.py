@@ -4,6 +4,7 @@ import dedalus.public as de
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d
+import scipy.sparse.linalg
 
 class Eigenproblem():
     def __init__(self, EVP, sparse=False):
@@ -55,8 +56,8 @@ class Eigenproblem():
         except np.linalg.linalg.LinAlgError:
             print("Eigenvalue solver failed to converge for parameters {}".format(params))
             return np.nan, np.nan, np.nan
-        except: #This gets triggered in sparse matrices
-#            print("Eigenvalue solver failed to converge for parameters {}".format(params))
+        except scipy.sparse.linalg.eigen.arpack.ArpackNoConvergence:
+            print("Sparse eigenvalue solver failed to converge for parameters {}".format(params))
             return np.nan, np.nan, np.nan
             
 
