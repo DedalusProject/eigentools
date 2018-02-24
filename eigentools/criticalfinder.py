@@ -130,7 +130,7 @@ class CriticalFinder:
             obj.grid_generator(mins, maxs, dims, logs=logs)
         """
         # If logs aren't specified, do everything in linear space
-        if logs == None:
+        if logs is None:
             self.logs = np.array([False]*len(mins))
         else:
             self.logs = logs
