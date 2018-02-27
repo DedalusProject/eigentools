@@ -100,8 +100,6 @@ class Eigenproblem():
         ax.plot(0, 0, '.', c = "blue", alpha = 0.5, label = r"$\gamma < 0$, $\omega < 0$")
         
         ax.legend(loc='lower right').draw_frame(False)
-        ax.set_ylim(1e-18,1)
-        ax.set_xlim(1e-5,1e15)
         ax.loglog()
         ax.set_xlabel(r"$\left|\gamma\right|$", size = 15)
         ax.set_ylabel(r"$\left|\omega\right|$", size = 15, rotation = 0)
@@ -155,10 +153,8 @@ class Eigenproblem():
         for k,v in old_evp.parameters.items():
             if type(v) == Field: #NCCs
                 new_field = d.new_field()
-                v.set_scales(old_d.dealias, keep_data=True)
-                new_field.set_scales(d.dealias, keep_data=False)
-                f = interp1d(old_x_grid, v['g']) 
-                new_field['g'] = f(x_grid)
+                v.set_scales(self.factor, keep_data=True)
+                new_field['g'] = v['g']
                 self.EVP_hires.parameters[k] = new_field
             else: #scalars
                 self.EVP_hires.parameters[k] = v
