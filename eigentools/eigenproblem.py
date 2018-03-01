@@ -48,8 +48,8 @@ class Eigenproblem():
                 freq = self.evalues_good[self.evalues_good.real == gr_rate].imag
             else:
                 gr_rate = np.max(self.evalues.real)
-                gr_indx = np.where[self.evalues.real == gr_rate][0][0]
-                freq = self.evalues[gr_index].imag
+                gr_indx = np.where(self.evalues.real == gr_rate)[0]
+                freq = self.evalues[gr_indx[0]].imag
 
             return gr_rate, gr_indx[0], freq
 
