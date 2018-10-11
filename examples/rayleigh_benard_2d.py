@@ -65,7 +65,7 @@ elif stress_free:
     rayleigh_benard.add_bc('right(uz) = 0')
 
 # create an Eigenproblem object
-EP = Eigenproblem(rayleigh_benard)
+EP = Eigenproblem(rayleigh_benard, sparse=True)
 
 # create a shim function to translate (x, y) to the parameters for the eigenvalue problem:
 def shim(x,y):
@@ -94,7 +94,6 @@ except:
     cf.grid_generator(mins, maxs, nums)
     if comm.rank == 0:
         cf.save_grid(file_name)
-cf.plot_crit(title=file_name, transpose=True, xlabel='kx', ylabel='Ra')
 
 end = time.time()
 if comm.rank == 0:
@@ -110,4 +109,3 @@ if comm.rank == 0:
     print("critical freq = {:10.5f}".format(crit[2]))
 
     cf.plot_crit(title=file_name, transpose=True, xlabel='kx', ylabel='Ra')
-
