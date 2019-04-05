@@ -15,11 +15,13 @@ class Eigenproblem():
         self.solver = EVP.build_solver()
         self.sparse = sparse
         
-    def solve(self, pencil=0):
+    def solve(self, pencil=0, N=15, target=0):
         self.pencil = pencil
+        self.N = N
+        self.target = target
 
         if self.sparse:
-            self.solver.solve_sparse(self.solver.pencils[self.pencil], N=10, target=0, rebuild_coeffs=True)
+            self.solver.solve_sparse(self.solver.pencils[self.pencil], N=self.N, target=self.target, rebuild_coeffs=True)
         else:
             self.solver.solve_dense(self.solver.pencils[self.pencil], rebuild_coeffs=True)
         self.evalues = self.solver.eigenvalues
@@ -27,7 +29,7 @@ class Eigenproblem():
     def process_evalues(self, ev):
         return ev[np.isfinite(ev)]
     
-    def growth_rate(self,params,reject=True, tol=1e-10):
+    def growth_rate(self,params,reject=True, tol=1e-10, **kwargs):
         """returns the growth rate, defined as the eigenvalue with the largest
         real part. May acually be a decay rate if there is no growing mode.
         
@@ -40,7 +42,7 @@ class Eigenproblem():
             vv.value = v
             self.EVP.parameters[k] = v
         try:
-            self.solve()
+            self.solve(**kwargs)
             if reject:
                 self.reject_spurious()
                 gr_rate = np.max(self.evalues_good.real)
@@ -56,7 +58,7 @@ class Eigenproblem():
         except np.linalg.linalg.LinAlgError:
             print("Eigenvalue solver failed to converge for parameters {}".format(params))
             return np.nan, np.nan, np.nan
-        except scipy.sparse.linalg.eigen.arpack.ArpackNoConvergence:
+        except (scipy.sparse.linalg.eigen.arpack.ArpackNoConvergence, scipy.sparse.linalg.eigen.arpack.ArpackError):
             print("Sparse eigenvalue solver failed to converge for parameters {}".format(params))
             return np.nan, np.nan, np.nan
             
