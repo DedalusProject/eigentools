@@ -164,8 +164,13 @@ class Eigenproblem():
         for e in old_evp.equations:
             self.EVP_hires.add_equation(e['raw_equation'])
 
-        for b in old_evp.boundary_conditions:
-            self.EVP_hires.add_bc(b['raw_equation'])
+        try:
+            for b in old_evp.boundary_conditions:
+                self.EVP_hires.add_bc(b['raw_equation'])
+        except AttributeError:
+            # after version befc23584fea, Dedalus no longer
+            # distingishes BCs from other equations
+            pass
 
         solver = self.EVP_hires.build_solver()
         if self.sparse:
