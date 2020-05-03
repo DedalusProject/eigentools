@@ -229,7 +229,7 @@ class Eigenproblem():
         #print(lambda1_and_indx)
         
         lambda1 = lambda1_and_indx[:, 0]
-        indx = lambda1_and_indx[:, 1].astype(np.int)
+        indx = lambda1_and_indx[:, 1].real.astype(np.int)
         
         #delta_near_unsorted = delta_near[reverse_lambda1_indx]
         #lambda1[np.where((1.0/delta_near_unsorted) < 1E6)] = None
