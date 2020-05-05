@@ -33,6 +33,6 @@ def test_rbc_growth(z, sparse):
 
     EP = eig.Eigenproblem(rayleigh_benard, sparse=sparse)
 
-    growth, index, freq = EP.growth_rate({})
+    growth, index, freq = EP.growth_rate()
     assert np.allclose((growth, freq), (0.0018125573647729994,0.)) 
  
