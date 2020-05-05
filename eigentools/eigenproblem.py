@@ -1,5 +1,8 @@
 from dedalus.tools.cache import CachedAttribute
 from dedalus.core.field import Field
+from dedalus.core.evaluator import Evaluator
+from dedalus.core.system import FieldSystem
+from dedalus.tools.post import merge_process_files
 import dedalus.public as de
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,13 +21,13 @@ class Eigenproblem():
         self.EVP = EVP
         self.solver = EVP.build_solver()
         if self.reject:
-            self.build_hires()
+            self._build_hires()
 
         self.evalues = None
         self.evalues_low = None
         self.evalues_high = None
 
-    def set_parameters(self, parameters):
+    def _set_parameters(self, parameters):
         """set the parameters in the underlying EVP object
 
         """
@@ -35,7 +38,7 @@ class Eigenproblem():
 
     def solve(self, parameters=None, pencil=0, N=15, target=0):
         if parameters:
-            self.set_parameters(parameters)
+            self._set_parameters(parameters)
         self.pencil = pencil
         self.N = N
         self.target = target
@@ -46,7 +49,7 @@ class Eigenproblem():
         if self.reject:
             self.run_solver(self.hires_solver)
             self.evalues_high = self.hires_solver.eigenvalues
-            self.reject_spurious()
+            self._reject_spurious()
         else:
             self.evalues = self.evalues_lowres
 
@@ -58,7 +61,10 @@ class Eigenproblem():
 
     def process_evalues(self, ev):
         return ev[np.isfinite(ev)]
-    
+
+    def set_eigenmode(self, index):
+        self.solver.set_state(index)
+        
     def growth_rate(self, parameters=None, **kwargs):
         """returns the growth rate, defined as the eigenvalue with the largest
         real part. May acually be a decay rate if there is no growing mode.
@@ -80,6 +86,41 @@ class Eigenproblem():
         except (scipy.sparse.linalg.eigen.arpack.ArpackNoConvergence, scipy.sparse.linalg.eigen.arpack.ArpackError):
             print("Sparse eigenvalue solver failed to converge for parameters {}".format(params))
             return np.nan, np.nan, np.nan
+
+    def project_mode(self, index, domain, transverse_modes):
+        """projects a mode specified by index onto a domain 
+
+        inputs
+        ------
+        index : an integer giving the eigenmode to project
+        domain : a domain to project onto
+        transverse_modes : a tuple of mode numbers for the transverse directions
+        """
+        
+        if len(transverse_modes) != (len(domain.bases) - 1):
+            raise ValueError("Must specify {} transverse modes for a domain with {} bases; {} specified".format(len(domain.bases)-1, len(domain.bases), len(transverse_modes)))
+
+        field_slice = tuple(i for i in [transverse_modes, slice(None)])
+
+        self.set_eigenmode(index)
+
+        fields = []
+        
+        for v in self.EVP.variables:
+            fields.append(domain.new_field(name=v))
+            fields[-1]['c'][field_slice] = self.solver.state[v]['c']
+        field_system = FieldSystem(fields)
+
+        return field_system
+    
+    def write_global_domain(self, field_system, base_name="IVP_output"):
+        output_evaluator = Evaluator(field_system.domain, self.EVP.namespace)
+        output_handler = output_evaluator.add_file_handler(base_name)
+        output_handler.add_system(field_system)
+
+        output_evaluator.evaluate_handlers(output_evaluator.handlers, timestep=0,sim_time=0, world_time=0, wall_time=0, iteration=0)
+
+        merge_process_files(base_name, cleanup=True)
 
     def spectrum(self, title='eigenvalue',spectype='raw'):
         if spectype == 'raw':
@@ -119,21 +160,21 @@ class Eigenproblem():
         ax.plot(0, 0, '.', c = "red", alpha = 0.5, label = r"$\gamma < 0$, $\omega > 0$")
         ax.plot(0, 0, '.', c = "blue", alpha = 0.5, label = r"$\gamma < 0$, $\omega < 0$")
         
-        ax.legend(loc='lower right').draw_frame(False)
+        ax.legend().draw_frame(False)
         ax.loglog()
         ax.set_xlabel(r"$\left|\gamma\right|$", size = 15)
         ax.set_ylabel(r"$\left|\omega\right|$", size = 15, rotation = 0)
 
         fig.savefig('{}_spectrum_{}.png'.format(title,spectype))
 
-    def reject_spurious(self):
+    def _reject_spurious(self):
         """may be able to pull everything out of EVP to construct a new one with higher N..."""
-        evg, indx = self.discard_spurious_eigenvalues()
+        evg, indx = self._discard_spurious_eigenvalues()
         self.evalues_good = evg
         self.evalues_index = indx
         self.evalues = self.evalues_good
 
-    def build_hires(self):
+    def _build_hires(self):
         old_evp = self.EVP
         old_x = old_evp.domain.bases[0]
 
@@ -166,7 +207,7 @@ class Eigenproblem():
 
         self.hires_solver = self.EVP_hires.build_solver()
         
-    def discard_spurious_eigenvalues(self):
+    def _discard_spurious_eigenvalues(self):
         """
         Solves the linear eigenvalue problem for two different resolutions.
         Returns trustworthy eigenvalues using nearest delta, from Boyd chapter 7.
