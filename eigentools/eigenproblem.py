@@ -5,69 +5,87 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d
 import scipy.sparse.linalg
+from . import tools
 
 class Eigenproblem():
-    def __init__(self, EVP, sparse=False):
+    def __init__(self, EVP, sparse=False, reject=True, factor=1.5):
         """
         EVP is dedalus EVP object
         """
+        self.reject = reject
+        self.sparse = sparse
+        self.factor = factor
         self.EVP = EVP
         self.solver = EVP.build_solver()
-        self.sparse = sparse
-        
-    def solve(self, pencil=0, N=15, target=0):
+        if self.reject:
+            self.build_hires()
+
+        self.evalues = None
+        self.evalues_low = None
+        self.evalues_high = None
+
+    def set_parameters(self, parameters):
+        """set the parameters in the underlying EVP object
+
+        """
+        for k,v in parameters.items():
+            tools.update_EVP_params(self.EVP, k, v)
+            if self.reject:
+                tools.update_EVP_params(self.EVP_hires, k, v)
+
+    def solve(self, parameters=None, pencil=0, N=15, target=0):
+        if parameters:
+            self.set_parameters(parameters)
         self.pencil = pencil
         self.N = N
         self.target = target
 
-        if self.sparse:
-            self.solver.solve_sparse(self.solver.pencils[self.pencil], N=self.N, target=self.target, rebuild_coeffs=True)
+        self.run_solver(self.solver)
+        self.evalues_low = self.solver.eigenvalues
+
+        if self.reject:
+            self.run_solver(self.hires_solver)
+            self.evalues_high = self.hires_solver.eigenvalues
+            self.reject_spurious()
         else:
-            self.solver.solve_dense(self.solver.pencils[self.pencil], rebuild_coeffs=True)
-        self.evalues = self.solver.eigenvalues
-            
+            self.evalues = self.evalues_lowres
+
+    def run_solver(self, solver):
+        if self.sparse:
+            solver.solve_sparse(solver.pencils[self.pencil], N=self.N, target=self.target, rebuild_coeffs=True)
+        else:
+            solver.solve_dense(solver.pencils[self.pencil], rebuild_coeffs=True)
+
     def process_evalues(self, ev):
         return ev[np.isfinite(ev)]
     
-    def growth_rate(self,params,reject=True, tol=1e-10, **kwargs):
+    def growth_rate(self, parameters=None, **kwargs):
         """returns the growth rate, defined as the eigenvalue with the largest
         real part. May acually be a decay rate if there is no growing mode.
         
         also returns the index of the fastest growing mode.  If there are no
         good eigenvalue, returns nan, nan, nan.
         """
-        for k,v in params.items():
-            # Dedalus workaround: must change values in two places
-            vv = self.EVP.namespace[k]
-            vv.value = v
-            self.EVP.parameters[k] = v
         try:
-            self.solve(**kwargs)
-            if reject:
-                self.reject_spurious()
-                gr_rate = np.max(self.evalues_good.real)
-                gr_indx = self.evalues_good_index[self.evalues_good.real == gr_rate]
-                freq = self.evalues_good[self.evalues_good.real == gr_rate].imag
-            else:
-                gr_rate = np.max(self.evalues.real)
-                gr_indx = np.where(self.evalues.real == gr_rate)[0]
-                freq = self.evalues[gr_indx[0]].imag
+            self.solve(parameters=parameters, **kwargs)
+            gr_rate = np.max(self.evalues.real)
+            gr_indx = np.where(self.evalues.real == gr_rate)[0]
+            freq = self.evalues[gr_indx[0]].imag
 
             return gr_rate, gr_indx[0], freq
 
         except np.linalg.linalg.LinAlgError:
-            print("Eigenvalue solver failed to converge for parameters {}".format(params))
+            print("Dense eigenvalue solver failed for parameters {}".format(params))
             return np.nan, np.nan, np.nan
         except (scipy.sparse.linalg.eigen.arpack.ArpackNoConvergence, scipy.sparse.linalg.eigen.arpack.ArpackError):
             print("Sparse eigenvalue solver failed to converge for parameters {}".format(params))
             return np.nan, np.nan, np.nan
-            
 
     def spectrum(self, title='eigenvalue',spectype='raw'):
         if spectype == 'raw':
-            ev = self.evalues
+            ev = self.evalues_low
         elif spectype == 'hires':
-            ev = self.evalues_hires
+            ev = self.evalues_high
         elif spectype == 'good':
             ev = self.evalues_good
         else:
@@ -108,47 +126,21 @@ class Eigenproblem():
 
         fig.savefig('{}_spectrum_{}.png'.format(title,spectype))
 
-    def reject_spurious(self, factor=1.5, tol=1e-10):
+    def reject_spurious(self):
         """may be able to pull everything out of EVP to construct a new one with higher N..."""
-        self.factor = factor
-        self.solve_hires(tol=tol)
         evg, indx = self.discard_spurious_eigenvalues()
         self.evalues_good = evg
-        self.evalues_good_index = indx
+        self.evalues_index = indx
+        self.evalues = self.evalues_good
 
-        
-    def solve_hires(self, tol=1e-10):
+    def build_hires(self):
         old_evp = self.EVP
-        old_d = old_evp.domain
-        old_x = old_d.bases[0]
-        old_x_grid = old_d.grid(0, scales=old_d.dealias)
-        if type(old_x) == de.Compound:
-            bases = []
-            for basis in old_x.subbases:
-                old_x_type = basis.__class__.__name__
-                n_hi = int(basis.base_grid_size*self.factor)
-                if old_x_type == "Chebyshev":
-                    x = de.Chebyshev(basis.name, n_hi, interval=basis.interval)
-                elif old_x_type == "Fourier":
-                    x = de.Fourier(basis.name, n_hi, interval=basis.interval)
-                else:
-                    raise ValueError("Don't know how to make a basis of type {}".format(old_x_type))
-                bases.append(x)
-            x = de.Compound(old_x.name, tuple(bases))
-        else:
-            old_x_type = old_x.__class__.__name__
-            n_hi = int(old_x.coeff_size * self.factor)
-            if old_x_type == "Chebyshev":
-                x = de.Chebyshev(old_x.name,n_hi,interval=old_x.interval)
-            elif old_x_type == "Fourier":
-                x = de.Fourier(old_x.name,n_hi,interval=old_x.interval)
-            else:
-                raise ValueError("Don't know how to make a basis of type {}".format(old_x_type))
-        d = de.Domain([x],comm=old_d.dist.comm)
-        self.EVP_hires = de.EVP(d,old_evp.variables,old_evp.eigenvalue, tolerance=tol)
+        old_x = old_evp.domain.bases[0]
 
-        x_grid = d.grid(0, scales=d.dealias)
-        
+        x = tools.basis_from_basis(old_x, self.factor)
+        d = de.Domain([x],comm=old_evp.domain.dist.comm)
+        self.EVP_hires = de.EVP(d,old_evp.variables,old_evp.eigenvalue, tolerance=self.EVP.tol)
+
         for k,v in old_evp.substitutions.items():
             self.EVP_hires.substitutions[k] = v
 
@@ -172,13 +164,8 @@ class Eigenproblem():
             # distingishes BCs from other equations
             pass
 
-        solver = self.EVP_hires.build_solver()
-        if self.sparse:
-            solver.solve_sparse(solver.pencils[self.pencil], N=10, target=0, rebuild_coeffs=True)
-        else:
-            solver.solve_dense(solver.pencils[self.pencil], rebuild_coeffs=True)
-        self.evalues_hires = solver.eigenvalues
-
+        self.hires_solver = self.EVP_hires.build_solver()
+        
     def discard_spurious_eigenvalues(self):
         """
         Solves the linear eigenvalue problem for two different resolutions.
@@ -189,8 +176,8 @@ class Eigenproblem():
         #LEV1 = self.evalues
         #LEV2 = self.evalues_hires
         # Eigenvalues returned by dedalus must be multiplied by -1
-        lambda1 = self.evalues #-LEV1.eigenvalues
-        lambda2 = self.evalues_hires #-LEV2.eigenvalues
+        lambda1 = self.evalues_low #-LEV1.eigenvalues
+        lambda2 = self.evalues_high #-LEV2.eigenvalues
 
         # Reverse engineer correct indices to make unsorted list from sorted
         reverse_lambda1_indx = np.arange(len(lambda1)) 
@@ -226,7 +213,6 @@ class Eigenproblem():
     
         # Discard eigenvalues with 1/delta_near < 10^6
         lambda1_and_indx = lambda1_and_indx[np.where((1.0/delta_near) > 1E6)]
-        #print(lambda1_and_indx)
         
         lambda1 = lambda1_and_indx[:, 0]
         indx = lambda1_and_indx[:, 1].real.astype(np.int)

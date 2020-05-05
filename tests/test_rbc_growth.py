@@ -3,10 +3,10 @@ import dedalus.public as de
 import eigentools as eig
 import numpy as np
 
-@pytest.mark.parametrize('Nz', [16,32])
+
+@pytest.mark.parametrize('z', [de.Chebyshev('z',16, interval=(0, 1)), de.Compound('z',(de.Chebyshev('z',16, interval=(0, 0.5)),de.Chebyshev('z',16, interval=(0.5, 1))))])
 @pytest.mark.parametrize('sparse', [True, False])
-def test_rbc_growth(Nz, sparse):
-    z = de.Chebyshev('z',Nz, interval=(0, 1))
+def test_rbc_growth(z, sparse):
     d = de.Domain([z])
 
     rayleigh_benard = de.EVP(d,['p', 'b', 'u', 'w', 'bz', 'uz', 'wz'], eigenvalue='omega')
@@ -34,5 +34,5 @@ def test_rbc_growth(Nz, sparse):
     EP = eig.Eigenproblem(rayleigh_benard, sparse=sparse)
 
     growth, index, freq = EP.growth_rate({})
-    assert np.allclose([growth, freq[0]], [0.0018125573647729994,0.]) 
+    assert np.allclose((growth, freq), (0.0018125573647729994,0.)) 
  
