@@ -43,24 +43,22 @@ class Eigenproblem():
         self.N = N
         self.target = target
 
-        self.run_solver(self.solver)
+        self._run_solver(self.solver)
         self.evalues_low = self.solver.eigenvalues
 
         if self.reject:
-            self.run_solver(self.hires_solver)
+            self._run_solver(self.hires_solver)
             self.evalues_high = self.hires_solver.eigenvalues
             self._reject_spurious()
         else:
             self.evalues = self.evalues_lowres
+            self.evalues_index = np.arange(len(self.evalues),dtype=int)
 
-    def run_solver(self, solver):
+    def _run_solver(self, solver):
         if self.sparse:
             solver.solve_sparse(solver.pencils[self.pencil], N=self.N, target=self.target, rebuild_coeffs=True)
         else:
             solver.solve_dense(solver.pencils[self.pencil], rebuild_coeffs=True)
-
-    def process_evalues(self, ev):
-        return ev[np.isfinite(ev)]
 
     def set_eigenmode(self, index):
         self.solver.set_state(index)
@@ -78,7 +76,7 @@ class Eigenproblem():
             gr_indx = np.where(self.evalues.real == gr_rate)[0]
             freq = self.evalues[gr_indx[0]].imag
 
-            return gr_rate, gr_indx[0], freq
+            return gr_rate, self.evalues_index[gr_indx[0]], freq
 
         except np.linalg.linalg.LinAlgError:
             print("Dense eigenvalue solver failed for parameters {}".format(params))
