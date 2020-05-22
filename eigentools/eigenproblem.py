@@ -85,26 +85,28 @@ class Eigenproblem():
             print("Sparse eigenvalue solver failed to converge for parameters {}".format(params))
             return np.nan, np.nan, np.nan
 
-    def plot_mode(self, index, fig_height=8,norm_mode=None):
+    def plot_mode(self, index, fig_height=8,norm_var=None):
         self.set_eigenmode(index)
         z = self.EVP.domain.grids()[0]
         nrow = 2
         nvars = len(self.EVP.variables)
         ncol = int(np.ceil(nvars/nrow))
 
-        if norm_mode:
-            pass
+        if norm_var:
+            rotation = self.solver.state[norm_var]['g'].conj()
+        else:
+            rotation = 1.
 
         plt.figure(figsize=[fig_height*ncol/nrow,fig_height])
         for i,v in enumerate(self.EVP.variables):
             plt.subplot(nrow,ncol,i+1)
-            plt.plot(z, self.solver.state[v]['g'].real, label='real')
-            plt.plot(z, self.solver.state[v]['g'].imag, label='imag')
+            plt.plot(z, (rotation*self.solver.state[v]['g']).real, label='real')
+            plt.plot(z, (rotation*self.solver.state[v]['g']).imag, label='imag')
             plt.xlabel(self.EVP.domain.bases[0].name, fontsize=14)
             plt.ylabel(v, fontsize=14)
             if i == 0:
                 plt.legend()
-    
+                
         plt.tight_layout()
 
     def project_mode(self, index, domain, transverse_modes):
