@@ -5,9 +5,9 @@ bases_register = {"Chebyshev": de.Chebyshev, "Fourier": de.Fourier, "Legendre": 
 
 def update_EVP_params(EVP, key, value):
     # Dedalus workaround: must change values in two places
-    vv = EVP.namespace[k]
-    vv.value = v
-    EVP.parameters[k] = v
+    vv = EVP.namespace[key]
+    vv.value = value
+    EVP.parameters[key] = value
 
 def basis_from_basis(basis, factor):
     """duplicates input basis with number of modes multiplied by input factor.
