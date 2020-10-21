@@ -144,7 +144,7 @@ class Eigenproblem():
 
         merge_process_files(base_name, cleanup=True)
 
-    def spectrum(self, title='eigenvalue',spectype='raw'):
+    def spectrum(self, title='eigenvalue',spectype='good'):
         if spectype == 'raw':
             ev = self.evalues_low
         elif spectype == 'hires':
