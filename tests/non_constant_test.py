@@ -30,9 +30,10 @@ import numpy as np
 import dedalus.public as de
 from eigentools import Eigenproblem, CriticalFinder
 
-@pytest.mark.parametrize('Nx', [50])
+@pytest.mark.parametrize('Nx', [60])
 @pytest.mark.parametrize('sparse', [False])
-def test_non_constant(Nx, sparse):
+@pytest.mark.parametrize('ordinal', [False, True])
+def test_non_constant(Nx, sparse, ordinal):
     x = de.Chebyshev('x',Nx,interval=(0,5))
     d = de.Domain([x,])
 
@@ -48,7 +49,7 @@ def test_non_constant(Nx, sparse):
     prob.add_bc("left(yx) = 0")
     prob.add_bc("right(yx) = 0")
 
-    EP = Eigenproblem(prob, sparse=sparse)
+    EP = Eigenproblem(prob, sparse=sparse, use_ordinal=ordinal)
 
     EP.solve()
     indx = EP.evalues_good.argsort()
