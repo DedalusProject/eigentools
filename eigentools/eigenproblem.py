@@ -11,7 +11,7 @@ import scipy.sparse.linalg
 from . import tools
 
 class Eigenproblem():
-    def __init__(self, EVP, sparse=False, reject=True, factor=1.5, drift_threshold=1e6, use_ordinal=False):
+    def __init__(self, EVP, sparse=False, reject=True, factor=1.5, scales=1, drift_threshold=1e6, use_ordinal=False):
         """
         EVP is dedalus EVP object
         """
@@ -23,11 +23,13 @@ class Eigenproblem():
         if self.reject:
             self._build_hires()
 
+        self.grid_name = self.EVP.domain.bases[0].name
         self.evalues = None
         self.evalues_low = None
         self.evalues_high = None
         self.drift_threshold = drift_threshold
         self.use_ordinal = use_ordinal
+        self.scales = scales
 
     def _set_parameters(self, parameters):
         """set the parameters in the underlying EVP object
@@ -37,6 +39,9 @@ class Eigenproblem():
             tools.update_EVP_params(self.EVP, k, v)
             if self.reject:
                 tools.update_EVP_params(self.EVP_hires, k, v)
+
+    def grid(self):
+        return self.EVP.domain.grids(scales=self.scales)[0]
 
     def solve(self, parameters=None, pencil=0, N=15, target=0):
         if parameters:
@@ -62,8 +67,24 @@ class Eigenproblem():
         else:
             solver.solve_dense(solver.pencils[self.pencil], rebuild_coeffs=True)
 
-    def set_eigenmode(self, index):
-        self.solver.set_state(index)
+    def _set_eigenmode(self, index, all_modes=False):
+        if all_modes:
+            good_index = index
+        else:
+            good_index = self.evalues_index[index]
+        self.solver.set_state(good_index)
+
+    def eigenmode(self, index, scales=None, all_modes=False):
+        """Returns Dedalus FieldSystem object containing the eigenmode given by index
+
+        """
+        self._set_eigenmode(index, all_modes=all_modes)
+        if scales is not None:
+            self.scales = scales
+        for f in self.solver.state.fields:
+            f.set_scales(self.scales,keep_data=True)
+
+        return self.solver.state
         
     def growth_rate(self, parameters=None, **kwargs):
         """returns the growth rate, defined as the eigenvalue with the largest
@@ -78,7 +99,7 @@ class Eigenproblem():
             gr_indx = np.where(self.evalues.real == gr_rate)[0]
             freq = self.evalues[gr_indx[0]].imag
 
-            return gr_rate, self.evalues_index[gr_indx[0]], freq
+            return gr_rate, gr_indx[0], freq
 
         except np.linalg.linalg.LinAlgError:
             print("Dense eigenvalue solver failed for parameters {}".format(params))
@@ -87,9 +108,10 @@ class Eigenproblem():
             print("Sparse eigenvalue solver failed to converge for parameters {}".format(params))
             return np.nan, np.nan, np.nan
 
-    def plot_mode(self, index, fig_height=8,norm_var=None):
-        self.set_eigenmode(index)
-        z = self.EVP.domain.grids()[0]
+    def plot_mode(self, index, fig_height=8, norm_var=None, scales=None, all_modes=False):
+        state = self.eigenmode(index, scales=scales, all_modes=all_modes)
+
+        z = self.grid()
         nrow = 2
         nvars = len(self.EVP.variables)
         ncol = int(np.ceil(nvars/nrow))
@@ -99,19 +121,21 @@ class Eigenproblem():
         else:
             rotation = 1.
 
-        plt.figure(figsize=[fig_height*ncol/nrow,fig_height])
+        fig = plt.figure(figsize=[fig_height*ncol/nrow,fig_height])
         for i,v in enumerate(self.EVP.variables):
-            plt.subplot(nrow,ncol,i+1)
-            plt.plot(z, (rotation*self.solver.state[v]['g']).real, label='real')
-            plt.plot(z, (rotation*self.solver.state[v]['g']).imag, label='imag')
-            plt.xlabel(self.EVP.domain.bases[0].name, fontsize=14)
-            plt.ylabel(v, fontsize=14)
+            ax  = fig.add_subplot(nrow,ncol,i+1)
+            ax.plot(z, (rotation*state[v]['g']).real, label='real')
+            ax.plot(z, (rotation*state[v]['g']).imag, label='imag')
+            ax.set_xlabel(self.grid_name, fontsize=15)
+            ax.set_ylabel(v, fontsize=15)
             if i == 0:
-                plt.legend()
+                ax.legend(fontsize=15)
                 
-        plt.tight_layout()
+        fig.tight_layout()
 
-    def project_mode(self, index, domain, transverse_modes):
+        return fig
+
+    def project_mode(self, index, domain, transverse_modes, all_modes=False):
         """projects a mode specified by index onto a domain 
 
         inputs
@@ -126,7 +150,7 @@ class Eigenproblem():
 
         field_slice = tuple(i for i in [transverse_modes, slice(None)])
 
-        self.set_eigenmode(index)
+        self._set_eigenmode(index, all_modes=all_modes)
 
         fields = []
         
@@ -146,50 +170,50 @@ class Eigenproblem():
 
         merge_process_files(base_name, cleanup=True)
 
-    def spectrum(self, title='eigenvalue',spectype='good'):
-        if spectype == 'raw':
+    def spectrum(self, figtitle='eigenvalue', spectype='good', xlog=True, ylog=True, real_label="real", imag_label="imag"):
+        """Plots the spectrum.
+
+        The spectrum plots real parts on the x axis and imaginary parts on the y axis.
+
+        Parameters
+        ----------
+        figtitle : str, optional
+                   string to be used in output filename.
+        spectype : {'good', 'low', 'high'}, optional
+                   specifies whether to use good, low, or high eigenvalues
+        xlog : bool, optional
+               Use symlog on x axis
+        ylog : bool, optional
+               Use symlog on y axis
+        real_label : str, optional
+                     Label to be applied to the real axis
+        imag_label : str, optional
+                     Label to be applied to the imaginary axis
+        """
+        if spectype == 'low':
             ev = self.evalues_low
-        elif spectype == 'hires':
+        elif spectype == 'high':
             ev = self.evalues_high
         elif spectype == 'good':
             ev = self.evalues_good
         else:
-            raise ValueError("Spectrum type is not one of {raw, hires, good}")
-
-        # Color is sign of imaginary part
-        colors = ["blue" for i in range(len(ev))]
-        imagpos = np.where(ev.imag >= 0)
-        for p in imagpos[0]:
-            colors[p] = "red"
-
-        # Symbol is sign of real part
-        symbols = ["." for i in range(len(ev))]
-        thickness = np.zeros(len(ev))
-        realpos = np.where(ev.real >= 0)
-        for p in realpos[0]:
-            symbols[p] = "+"
-            thickness[p] = 2
-
-        print("Number of positive real parts", len(realpos[0]))
+            raise ValueError("Spectrum type is not one of {low, high, good}")
 
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        for x, y, c, s, t in zip(np.abs(ev.real), np.abs(ev.imag), colors, symbols, thickness):
-            if x is not np.ma.masked:
-                ax.plot(x, y, s, c=c, alpha = 0.5, ms = 8, mew = t)
+                
+        ax.scatter(ev.real, ev.imag)
 
-        # Dummy plot for legend
-        ax.plot(0, 0, '+', c = "red", alpha = 0.5, mew = 2, label = r"$\gamma \geq 0$, $\omega > 0$")
-        ax.plot(0, 0, '+', c = "blue", alpha = 0.5, mew = 2, label = r"$\gamma \geq 0$, $\omega < 0$")
-        ax.plot(0, 0, '.', c = "red", alpha = 0.5, label = r"$\gamma < 0$, $\omega > 0$")
-        ax.plot(0, 0, '.', c = "blue", alpha = 0.5, label = r"$\gamma < 0$, $\omega < 0$")
-        
-        ax.legend().draw_frame(False)
-        ax.loglog()
-        ax.set_xlabel(r"$\left|\gamma\right|$", size = 15)
-        ax.set_ylabel(r"$\left|\omega\right|$", size = 15, rotation = 0)
+        if xlog:
+            ax.set_xscale('symlog')
+        if ylog:
+            ax.set_yscale('symlog')
+        ax.set_xlabel(real_label, size = 15)
+        ax.set_ylabel(imag_label, size = 15)
 
-        fig.savefig('{}_spectrum_{}.png'.format(title,spectype))
+        fig.savefig('{}_spectrum_{}.png'.format(figtitle,spectype))
+
+        return fig
 
     def _reject_spurious(self):
         """may be able to pull everything out of EVP to construct a new one with higher N..."""
@@ -284,3 +308,29 @@ class Eigenproblem():
     
         return eval_low, indx
 
+    def plot_drift_ratios(self):
+        """Plot drift ratios (both ordinal and nearest) vs. mode number.
+
+        The drift ratios give a measure of how good a given eigenmode is; this can help set thresholds.
+
+        """
+        if self.reject is False:
+            raise NotImplementedError("Can't plot drift ratios unless eigenvalue rejection is True.")
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        mode_numbers = np.arange(len(self.delta_near))
+        ax.semilogy(mode_numbers,1/self.delta_near,'o',alpha=0.4)
+        ax.semilogy(mode_numbers,1/self.delta_ordinal,'x',alpha=0.4)
+
+        ax.set_prop_cycle(None)
+        good_near = 1/self.delta_near > self.drift_threshold
+        good_ordinal = 1/self.delta_ordinal > self.drift_threshold
+        ax.semilogy(mode_numbers[good_near],1/self.delta_near[good_near],'o', label='nearest')
+        ax.semilogy(mode_numbers[good_ordinal],1/self.delta_ordinal[good_ordinal],'x',label='ordinal')
+        ax.axhline(self.drift_threshold,alpha=0.4, color='black')
+        ax.set_xlabel("mode number", size=15)
+        ax.set_ylabel(r"$1/\delta$", size=15)
+        ax.legend(fontsize=15)
+
+        return fig
