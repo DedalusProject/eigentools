@@ -11,7 +11,7 @@ import scipy.sparse.linalg
 from . import tools
 
 class Eigenproblem():
-    def __init__(self, EVP, sparse=False, reject=True, factor=1.5):
+    def __init__(self, EVP, sparse=False, reject=True, factor=1.5, drift_threshold=1e6, use_ordinal=False):
         """
         EVP is dedalus EVP object
         """
@@ -26,6 +26,8 @@ class Eigenproblem():
         self.evalues = None
         self.evalues_low = None
         self.evalues_high = None
+        self.drift_threshold = drift_threshold
+        self.use_ordinal = use_ordinal
 
     def _set_parameters(self, parameters):
         """set the parameters in the underlying EVP object
@@ -234,55 +236,51 @@ class Eigenproblem():
         Solves the linear eigenvalue problem for two different resolutions.
         Returns trustworthy eigenvalues using nearest delta, from Boyd chapter 7.
         """
-
-        # Solve the linear eigenvalue problem at two different resolutions.
-        #LEV1 = self.evalues
-        #LEV2 = self.evalues_hires
-        # Eigenvalues returned by dedalus must be multiplied by -1
-        lambda1 = self.evalues_low #-LEV1.eigenvalues
-        lambda2 = self.evalues_high #-LEV2.eigenvalues
+        eval_low = self.evalues_low
+        eval_hi = self.evalues_high
 
         # Reverse engineer correct indices to make unsorted list from sorted
-        reverse_lambda1_indx = np.arange(len(lambda1)) 
-        reverse_lambda2_indx = np.arange(len(lambda2))
+        reverse_eval_low_indx = np.arange(len(eval_low)) 
+        reverse_eval_hi_indx = np.arange(len(eval_hi))
     
-        lambda1_and_indx = np.asarray(list(zip(lambda1, reverse_lambda1_indx)))
-        lambda2_and_indx = np.asarray(list(zip(lambda2, reverse_lambda2_indx)))
+        eval_low_and_indx = np.asarray(list(zip(eval_low, reverse_eval_low_indx)))
+        eval_hi_and_indx = np.asarray(list(zip(eval_hi, reverse_eval_hi_indx)))
         
-        #print(lambda1_and_indx, lambda1_and_indx.shape, lambda1, len(lambda1))
-
         # remove nans
-        lambda1_and_indx = lambda1_and_indx[np.isfinite(lambda1)]
-        lambda2_and_indx = lambda2_and_indx[np.isfinite(lambda2)]
+        eval_low_and_indx = eval_low_and_indx[np.isfinite(eval_low)]
+        eval_hi_and_indx = eval_hi_and_indx[np.isfinite(eval_hi)]
     
-        # Sort lambda1 and lambda2 by real parts
-        lambda1_and_indx = lambda1_and_indx[np.argsort(lambda1_and_indx[:, 0].real)]
-        lambda2_and_indx = lambda2_and_indx[np.argsort(lambda2_and_indx[:, 0].real)]
+        # Sort eval_low and eval_hi by real parts
+        eval_low_and_indx = eval_low_and_indx[np.argsort(eval_low_and_indx[:, 0].real)]
+        eval_hi_and_indx = eval_hi_and_indx[np.argsort(eval_hi_and_indx[:, 0].real)]
         
-        lambda1_sorted = lambda1_and_indx[:, 0]
-        lambda2_sorted = lambda2_and_indx[:, 0]
+        eval_low_sorted = eval_low_and_indx[:, 0]
+        eval_hi_sorted = eval_hi_and_indx[:, 0]
 
         # Compute sigmas from lower resolution run (gridnum = N1)
-        sigmas = np.zeros(len(lambda1_sorted))
-        sigmas[0] = np.abs(lambda1_sorted[0] - lambda1_sorted[1])
-        sigmas[1:-1] = [0.5*(np.abs(lambda1_sorted[j] - lambda1_sorted[j - 1]) + np.abs(lambda1_sorted[j + 1] - lambda1_sorted[j])) for j in range(1, len(lambda1_sorted) - 1)]
-        sigmas[-1] = np.abs(lambda1_sorted[-2] - lambda1_sorted[-1])
+        sigmas = np.zeros(len(eval_low_sorted))
+        sigmas[0] = np.abs(eval_low_sorted[0] - eval_low_sorted[1])
+        sigmas[1:-1] = [0.5*(np.abs(eval_low_sorted[j] - eval_low_sorted[j - 1]) + np.abs(eval_low_sorted[j + 1] - eval_low_sorted[j])) for j in range(1, len(eval_low_sorted) - 1)]
+        sigmas[-1] = np.abs(eval_low_sorted[-2] - eval_low_sorted[-1])
 
         if not (np.isfinite(sigmas)).all():
             print("WARNING: at least one eigenvalue spacings (sigmas) is non-finite (np.inf or np.nan)!")
     
+        # Ordinal delta
+        self.delta_ordinal = np.array([np.abs(eval_low_sorted[j] - eval_hi_sorted[j])/sigmas[j] for j in range(len(eval_low_sorted))])
+
         # Nearest delta
-        delta_near = np.array([np.nanmin(np.abs(lambda1_sorted[j] - lambda2_sorted)/sigmas[j]) for j in range(len(lambda1_sorted))])
+        self.delta_near = np.array([np.nanmin(np.abs(eval_low_sorted[j] - eval_hi_sorted)/sigmas[j]) for j in range(len(eval_low_sorted))])
     
-        # Discard eigenvalues with 1/delta_near < 10^6
-        lambda1_and_indx = lambda1_and_indx[np.where((1.0/delta_near) > 1E6)]
+        # Discard eigenvalues with 1/delta_near < drift_threshold
+        if self.use_ordinal:
+            inverse_drift = 1/self.delta_ordinal
+        else:
+            inverse_drift = 1/self.delta_near
+        eval_low_and_indx = eval_low_and_indx[np.where(inverse_drift > self.drift_threshold)]
         
-        lambda1 = lambda1_and_indx[:, 0]
-        indx = lambda1_and_indx[:, 1].real.astype(np.int)
-        
-        #delta_near_unsorted = delta_near[reverse_lambda1_indx]
-        #lambda1[np.where((1.0/delta_near_unsorted) < 1E6)] = None
-        #lambda1[np.where(np.isnan(1.0/delta_near_unsorted) == True)] = None
+        eval_low = eval_low_and_indx[:, 0]
+        indx = eval_low_and_indx[:, 1].real.astype(np.int)
     
-        return lambda1, indx
+        return eval_low, indx
 
