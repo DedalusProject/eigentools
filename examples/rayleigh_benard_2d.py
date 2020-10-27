@@ -97,8 +97,8 @@ crit = cf.crit_finder(find_freq = True)
 
 if comm.rank == 0:
     print("crit = {}".format(crit))
-    print("critical wavenumber k = {:10.5f}".format(crit[1]))
-    print("critical Ra = {:10.5f}".format(crit[0]))
+    print("critical wavenumber k = {:10.5f}".format(crit[0]))
+    print("critical Ra = {:10.5f}".format(crit[1]))
     print("critical freq = {:10.5f}".format(crit[2]))
 
     cf.plot_crit(title=file_name, transpose=True, xlabel='kx', ylabel='Ra')
