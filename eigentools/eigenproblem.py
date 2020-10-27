@@ -1,4 +1,5 @@
 from dedalus.tools.cache import CachedAttribute
+import logging
 from dedalus.core.field import Field
 from dedalus.core.evaluator import Evaluator
 from dedalus.core.system import FieldSystem
@@ -9,6 +10,8 @@ import numpy as np
 from scipy.interpolate import interp1d
 import scipy.sparse.linalg
 from . import tools
+
+logger = logging.getLogger(__name__.split('.')[-1])
 
 class Eigenproblem():
     def __init__(self, EVP, sparse=False, reject=True, factor=1.5, scales=1, drift_threshold=1e6, use_ordinal=False):
@@ -102,10 +105,10 @@ class Eigenproblem():
             return gr_rate, gr_indx[0], freq
 
         except np.linalg.linalg.LinAlgError:
-            print("Dense eigenvalue solver failed for parameters {}".format(params))
+            logger.warning("Dense eigenvalue solver failed for parameters {}".format(params))
             return np.nan, np.nan, np.nan
         except (scipy.sparse.linalg.eigen.arpack.ArpackNoConvergence, scipy.sparse.linalg.eigen.arpack.ArpackError):
-            print("Sparse eigenvalue solver failed to converge for parameters {}".format(params))
+            logger.warning("Sparse eigenvalue solver failed to converge for parameters {}".format(params))
             return np.nan, np.nan, np.nan
 
     def plot_mode(self, index, fig_height=8, norm_var=None, scales=None, all_modes=False):
@@ -288,7 +291,7 @@ class Eigenproblem():
         sigmas[-1] = np.abs(eval_low_sorted[-2] - eval_low_sorted[-1])
 
         if not (np.isfinite(sigmas)).all():
-            print("WARNING: at least one eigenvalue spacings (sigmas) is non-finite (np.inf or np.nan)!")
+            logger.warning("At least one eigenvalue spacings (sigmas) is non-finite (np.inf or np.nan)!")
     
         # Ordinal delta
         self.delta_ordinal = np.array([np.abs(eval_low_sorted[j] - eval_hi_sorted[j])/sigmas[j] for j in range(len(eval_low_sorted))])
