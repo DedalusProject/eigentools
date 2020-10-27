@@ -67,39 +67,32 @@ elif stress_free:
 # create an Eigenproblem object
 EP = Eigenproblem(rayleigh_benard, sparse=True)
 
-# create a shim function to translate (x, y) to the parameters for the eigenvalue problem:
-def shim(x,y):
-    gr, indx, freq = EP.growth_rate({"Ra":x,"k":y})
-    ret = gr+1j*freq
-    if type(ret) == np.ndarray:
-        return ret[0]
-    else:
-        return ret
-
-cf = CriticalFinder(shim, comm)
+cf = CriticalFinder(EP, ("Ra", "k"), comm)
 
 # generating the grid is the longest part
 start = time.time()
 if no_slip:
-    mins = np.array((1000, 2))
-    maxs = np.array((3000, 4))
+    nx = 20
+    ny = 20
+    xpoints = np.linspace(1000, 3000, nx)
+    ypoints = np.linspace(2, 4, ny)
 elif stress_free:
     #657.5, 2.221
-    mins = np.array((400, 1.6))
-    maxs = np.array((1000, 3))
-nums = np.array((20, 20))
+    nx = 10
+    ny = 10
+    xpoints = np.linspace(550, 700, nx)
+    ypoints = np.linspace(2, 2.4, ny)
+
 try:
     cf.load_grid('{}.h5'.format(file_name))
 except:
-    cf.grid_generator(mins, maxs, nums)
-    if comm.rank == 0:
-        cf.save_grid(file_name)
+    cf.grid_generator((xpoints, ypoints))
+    cf.save_grid(file_name)
 
 end = time.time()
 if comm.rank == 0:
     print("grid generation time: {:10.5f} sec".format(end-start))
 
-cf.root_finder()
 crit = cf.crit_finder(find_freq = True)
 
 if comm.rank == 0:
