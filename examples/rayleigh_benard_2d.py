@@ -10,13 +10,14 @@ from eigentools import Eigenproblem, CriticalFinder
 import time
 import dedalus.public as de
 import numpy as np
+import sys
 
 comm = MPI.COMM_WORLD
 
 
 no_slip = False
 stress_free = True
-file_name = 'rayleigh_benard_growth_rates'
+file_name = sys.argv[0].strip('.py')
 if no_slip:
     file_name += '_no_slip'
 elif stress_free:
@@ -67,7 +68,7 @@ elif stress_free:
 # create an Eigenproblem object
 EP = Eigenproblem(rayleigh_benard, sparse=True)
 
-cf = CriticalFinder(EP, ("Ra", "k"), comm)
+cf = CriticalFinder(EP, ("Ra", "k"), comm, find_freq = True)
 
 # generating the grid is the longest part
 start = time.time()
@@ -93,7 +94,8 @@ end = time.time()
 if comm.rank == 0:
     print("grid generation time: {:10.5f} sec".format(end-start))
 
-crit = cf.crit_finder(find_freq = True)
+#crit = cf.crit_finder()
+crit = cf.critical_polisher()
 
 if comm.rank == 0:
     print("crit = {}".format(crit))

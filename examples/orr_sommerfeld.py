@@ -16,7 +16,10 @@ import time
 import dedalus.public as de
 import numpy as np
 import matplotlib.pylab as plt
+import sys
 
+
+file_name = sys.argv[0].strip('.py')
 comm = MPI.COMM_WORLD
 
 
@@ -44,38 +47,31 @@ EP = Eigenproblem(orr_somerfeld, sparse=True)
 
 # create a shim function to translate (x, y) to the parameters for the eigenvalue problem:
 
-def shim(x,y):
-    gr, indx, freq = EP.growth_rate({"Re":x,"alpha":y})
-    ret = gr+1j*freq
-    if type(ret) == np.ndarray:
-        return ret[0]
-    else:
-        return ret
-
-cf = CriticalFinder(shim, comm)
+cf = CriticalFinder(EP,("Re", "alpha"), comm, find_freq=True)
 
 # generating the grid is the longest part
 start = time.time()
-mins = np.array((5500, 0.95))
-maxs = np.array((6000, 1.15))
-nums = np.array((20  , 20))
+nx = 20
+ny = 20
+xpoints = np.linspace(5500, 6500, nx)
+ypoints = np.linspace(0.95, 1.15, ny)
 try:
-    cf.load_grid('orr_sommerfeld_growth_rates.h5')
+    cf.load_grid('{}.h5'.format(file_name))
 except:
-    cf.grid_generator(mins, maxs, nums)
+    cf.grid_generator((xpoints, ypoints))
     if comm.rank == 0:
-        cf.save_grid('orr_sommerfeld_growth_rates')
+        cf.save_grid(file_name)
 end = time.time()
 if comm.rank == 0:
     print("grid generation time: {:10.5f} sec".format(end-start))
 
-cf.root_finder()
-crit = cf.crit_finder(find_freq = True)
+crit = cf.crit_finder()
+#crit = cf.critical_polisher(method='Nelder-Mead')
 
 if comm.rank == 0:
     print("crit = {}".format(crit))
-    print("critical wavenumber alpha = {:10.5f}".format(crit[1]))
-    print("critical Re = {:10.5f}".format(crit[0]))
+    print("critical wavenumber alpha = {:10.5f}".format(crit[0]))
+    print("critical Re = {:10.5f}".format(crit[1]))
     print("critical omega = {:10.5f}".format(crit[2]))
 
     cf.save_grid('orr_sommerfeld_growth_rates')

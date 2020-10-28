@@ -14,7 +14,7 @@ from . import tools
 logger = logging.getLogger(__name__.split('.')[-1])
 
 class Eigenproblem():
-    def __init__(self, EVP, sparse=False, reject=True, factor=1.5, scales=1, drift_threshold=1e6, use_ordinal=False):
+    def __init__(self, EVP, sparse=False, reject=True, factor=1.5, scales=1, drift_threshold=1e6, use_ordinal=False, grow_func=lambda x: x.real, freq_func=lambda x: x.imag):
         """
         EVP is dedalus EVP object
         """
@@ -33,6 +33,8 @@ class Eigenproblem():
         self.drift_threshold = drift_threshold
         self.use_ordinal = use_ordinal
         self.scales = scales
+        self.grow_func = grow_func
+        self.freq_func = freq_func
 
     def _set_parameters(self, parameters):
         """set the parameters in the underlying EVP object
@@ -98,9 +100,9 @@ class Eigenproblem():
         """
         try:
             self.solve(parameters=parameters, **kwargs)
-            gr_rate = np.max(self.evalues.real)
-            gr_indx = np.where(self.evalues.real == gr_rate)[0]
-            freq = self.evalues[gr_indx[0]].imag
+            gr_rate = np.max(self.grow_func(self.evalues))
+            gr_indx = np.where(self.grow_func(self.evalues) == gr_rate)[0]
+            freq = self.freq_func(self.evalues[gr_indx[0]])
 
             return gr_rate, gr_indx[0], freq
 
