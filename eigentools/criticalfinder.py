@@ -223,7 +223,7 @@ class CriticalFinder:
             logger.warning('Optimize results not fully converged, returning crit_finder results.')
             return crits
 
-    def plot_crit(self, title='growth_rates', transpose=False, xlabel = "", ylabel = ""):
+    def plot_crit(self, title='growth_rates', transpose=False, xlabel = "", ylabel = "", zlabel="growth rate", cmap="virids"):
         """Create a 2D colormap of the grid of growth rates.  If available, the
             root values that have been found will be plotted over the colormap
 
@@ -251,8 +251,8 @@ class CriticalFinder:
             grid = self.evalue_grid.real
         # Plot colormap, only plot 2 stdevs off zero
         biggest_val = 2*np.abs(grid).std()
-        plt.pcolormesh(xx,yy,grid,cmap='RdYlBu_r',vmin=-biggest_val,vmax=biggest_val)
-        plt.colorbar()
+        plt.pcolormesh(xx,yy,grid,cmap=cmap,vmin=-biggest_val,vmax=biggest_val)
+        plt.colorbar(label=zlabel)
 
         # Grab root data if they're available, plot them.
         if transpose:
@@ -273,6 +273,7 @@ class CriticalFinder:
         plt.xlim(xx.min(),xx.max())
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
+        plt.tight_layout()
         fig.savefig('{}.png'.format(title))
         
         return fig
