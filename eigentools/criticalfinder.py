@@ -123,7 +123,7 @@ class CriticalFinder:
             filename:   The name of the .h5 file containing the grid data
         """
         with h5py.File(filename,'r') as infile:
-            self.parameter_grids = [k.value for k in infile.values() if 'xyz' in k.name]
+            self.parameter_grids = [k[()] for k in infile.values() if 'xyz' in k.name]
             self.N = len(self.parameter_grids)
             logger.info("Read an {}-dimensional grid".format(self.N))
             self.evalue_grid = infile['/grid'][:]
