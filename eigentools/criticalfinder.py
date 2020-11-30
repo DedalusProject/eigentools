@@ -215,7 +215,7 @@ class CriticalFinder:
             logger.warning('Optimize results not fully converged, returning crit_finder results.')
             return crits
 
-    def plot_crit(self, title='growth_rates', transpose=False, xlabel = "", ylabel = "", zlabel="growth rate", cmap="virids"):
+    def plot_crit(self, title='growth_rates', transpose=False, xlabel = "", ylabel = "", zlabel="growth rate", cmap="viridis"):
         """Create a 2D colormap of the grid of growth rates.  If available, the
             root values that have been found will be plotted over the colormap
 
