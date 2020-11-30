@@ -210,7 +210,7 @@ class CriticalFinder:
         
         if search_result.success:
             logger.info('Minimum growth rate of {} found'.format(search_result.fun))
-            return list(search_result.x) + list(freq)
+            return list(search_result.x[::-1]) + list(freq)
         else:
             logger.warning('Optimize results not fully converged, returning crit_finder results.')
             return crits
