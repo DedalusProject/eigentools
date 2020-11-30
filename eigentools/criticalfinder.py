@@ -11,38 +11,30 @@ logger = logging.getLogger(__name__.split('.')[-1])
 
 def load_balance(dims, nproc):
     """
-    Evenly splits up tasks across the specified number of processes.
+    Evenly splits up tasks over specified number of processes.
 
-    Inputs:
-    -------
-        dims    - An N-length array, containing the size of each dimension
-                  of the eigenvalue problem.
-        nproc   - The number of processes to split up the problem over
+    Parameters
+    ----------
+    dims  : ndarray
+            An N-length array, containing the size of each parameter dimension the eigenvalue problem will be solved on.
+    nproc : int
+            The number of processes to split up the problem over
     
-    Outputs:
-    --------
-        An array of arrays, where the 0th array contains the task indices for the
-        0th process, and so on.
-
-    Example:
+    Returns
     -------
-        # Three dimensional critical-finding problem
-        nx, ny, nz  = 5, 10, 20
-        nproc       = MPI.COMM_WORLD.size
-        dims        = np.array((nx, ny, nz))
-        tasks       = load_balance(dims, nproc)
+    ndarray
+       An array of arrays, where the 0th array contains the task indices for the 0th process, and so on.
+
     """
     index = np.arange(np.prod(dims))
     return np.array_split(index,nproc)
 
 class CriticalFinder:
-    """CriticalFinder
+    """finds critical parameters for eigenvalue problems.
 
     This class provides simple tools for finding the critical
-    parameters for the linear (in)stability of a given flow. Here, the
-    parameter space must be 2D; typically this will be (k, Re), where
-    k is a wavenumber and Re is some control parameter (Reynolds or
-    Rayleigh or some such number). 
+    parameters for the linear (in)stability of a given flow. The parameter space must be 2D; typically this will be (k, Re), where
+    k is a wavenumber and Re is some control parameter (e. g. Reynolds or Rayleigh). However, this is completely user controllable.
 
     Attributes:
     -----------
