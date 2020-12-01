@@ -1,0 +1,18 @@
+name: build
+
+on:
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: dedalusproject/dedalus-conda
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        ref: 'v2.0-refactor'
+    - name: build
+      run: pip install -e .
+    - name: test
+      run: pytest 
