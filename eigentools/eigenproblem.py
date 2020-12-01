@@ -233,7 +233,7 @@ class Eigenproblem():
 
         x = tools.basis_from_basis(old_x, self.factor)
         d = de.Domain([x],comm=old_evp.domain.dist.comm)
-        self.EVP_hires = de.EVP(d,old_evp.variables,old_evp.eigenvalue, tolerance=self.EVP.tol)
+        self.EVP_hires = de.EVP(d,old_evp.variables,old_evp.eigenvalue, ncc_cutoff=old_evp.ncc_kw['cutoff'], max_ncc_terms=old_evp.ncc_kw['max_terms'], tolerance=self.EVP.tol)
 
         for k,v in old_evp.substitutions.items():
             self.EVP_hires.substitutions[k] = v
