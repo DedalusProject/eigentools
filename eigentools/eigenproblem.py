@@ -117,7 +117,7 @@ class Eigenproblem():
         self.evalues_good_index = indx
 
         
-    def solve_hires(self, tol=1e-10):
+    def solve_hires(self):
         old_evp = self.EVP
         old_d = old_evp.domain
         old_x = old_d.bases[0]
@@ -145,7 +145,7 @@ class Eigenproblem():
             else:
                 raise ValueError("Don't know how to make a basis of type {}".format(old_x_type))
         d = de.Domain([x],comm=old_d.dist.comm)
-        self.EVP_hires = de.EVP(d,old_evp.variables,old_evp.eigenvalue, tolerance=tol)
+        self.EVP_hires = de.EVP(d,old_evp.variables,old_evp.eigenvalue, ncc_cutoff=old_evp.ncc_kw['cutoff'], max_ncc_terms=old_evp.ncc_kw['max_terms'], tolerance=old_evp.tol)
 
         x_grid = d.grid(0, scales=d.dealias)
         
