@@ -108,10 +108,10 @@ class Eigenproblem():
 
         fig.savefig('{}_spectrum_{}.png'.format(title,spectype))
 
-    def reject_spurious(self, factor=1.5, tol=1e-10):
+    def reject_spurious(self, factor=1.5):
         """may be able to pull everything out of EVP to construct a new one with higher N..."""
         self.factor = factor
-        self.solve_hires(tol=tol)
+        self.solve_hires()
         evg, indx = self.discard_spurious_eigenvalues()
         self.evalues_good = evg
         self.evalues_good_index = indx
