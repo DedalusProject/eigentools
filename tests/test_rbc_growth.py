@@ -2,9 +2,9 @@ import pytest
 import dedalus.public as de
 import eigentools as eig
 import numpy as np
+from mpi4py import MPI
 
-
-def rbc_problem(problem_type, domain):
+def rbc_problem(problem_type, domain, stress_free=False):
     problems = {'EVP': de.EVP, 'IVP': de.IVP}
 
     try:
@@ -34,8 +34,12 @@ def rbc_problem(problem_type, domain):
     rayleigh_benard.add_bc('right(b) = 0')
     rayleigh_benard.add_bc('left(w) = 0')
     rayleigh_benard.add_bc('right(w) = 0')
-    rayleigh_benard.add_bc('left(u) = 0')
-    rayleigh_benard.add_bc('right(u) = 0')
+    if stress_free:
+        rayleigh_benard.add_bc('left(uz) = 0')
+        rayleigh_benard.add_bc('right(uz) = 0')
+    else:
+        rayleigh_benard.add_bc('left(u) = 0')
+        rayleigh_benard.add_bc('right(u) = 0')
 
     return rayleigh_benard
 
@@ -68,3 +72,24 @@ def test_rbc_output(z):
     rb_IVP = rbc_problem('IVP', ivp_domain)
     solver =  rb_IVP.build_solver(de.timesteppers.RK222)
     solver.load_state("IVP_output/IVP_output_s1.h5",-1)
+
+@pytest.mark.parametrize('z', [de.Chebyshev('z',16, interval=(0, 1))])
+def test_rbc_crit_find(z):
+    d = de.Domain([z], comm=MPI.COMM_SELF)
+    rb_evp = rbc_problem('EVP', d, stress_free=True)
+    EP = eig.Eigenproblem(rb_evp, sparse=False)
+    comm = MPI.COMM_WORLD
+    cf = eig.CriticalFinder(EP, ("Ra", "k"), comm, find_freq=True)
+
+    nx = 10
+    ny = 10
+    xpoints = np.linspace(550, 700, nx)
+    ypoints = np.linspace(2, 2.4, ny)
+
+    cf.grid_generator((xpoints, ypoints))
+    crit = cf.crit_finder(polish_roots=True, tol=1e-6, method='Powell')
+
+    Rac = 27*np.pi**4/4.
+    kc = 2*np.pi/2**1.5
+
+    assert np.allclose(crit, [kc, Rac, 0.], rtol=1e-5)

@@ -66,7 +66,7 @@ end = time.time()
 if comm.rank == 0:
     logger.info("grid generation time: {:10.5f} sec".format(end-start))
 
-crit = cf.critical_polisher(tol=1e-5, method='Nelder-Mead')
+crit = cf.crit_finder(polish_roots=True, tol=1e-5, method='Nelder-Mead')
 
 Re_orszag = 5772.22
 alpha_orszag = 1.02056

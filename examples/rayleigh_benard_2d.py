@@ -94,8 +94,8 @@ end = time.time()
 if comm.rank == 0:
     print("grid generation time: {:10.5f} sec".format(end-start))
 
-#crit = cf.crit_finder()
-crit = cf.critical_polisher()
+crit = cf.crit_finder(polish_roots=True, tol=1e-5)
+
 
 if comm.rank == 0:
     print("crit = {}".format(crit))

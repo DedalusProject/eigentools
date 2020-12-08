@@ -26,8 +26,9 @@ Pm = 0.001
 mri.parameters['q'] = 1.5
 mri.parameters['beta'] = 25.0
 mri.parameters['iR'] = Pm/Rm
-mri.parameters['iRm'] = 1./Rm
+mri.parameters['Rm'] = Rm
 mri.parameters['Q'] = 0.748
+mri.substitutions['iRm'] = '1/Rm'
 
 mri.add_equation("sigma*psixx - Q**2*sigma*psi - iR*dx(psixxx) + 2*iR*Q**2*psixx - iR*Q**4*psi - 2*1j*Q*u - (2/beta)*1j*Q*dx(Ax) + (2/beta)*Q**3*1j*A = 0")
 mri.add_equation("sigma*u - iR*dx(ux) + iR*Q**2*u - (q - 2)*1j*Q*psi - (2/beta)*1j*Q*B = 0") 
@@ -55,35 +56,23 @@ mri.add_bc("right(Bx) = 0")
 # create an Eigenproblem object
 EP = Eigenproblem(mri, sparse=True)
 
-# create a shim function to translate (x, y) to the parameters for the eigenvalue problem:
-def shim(x,y):
-    iRm = 1/x
-    iRe = (iRm*Pm)
-    print("Rm = {}; Re = {}; Pm = {}".format(1/iRm, 1/iRe, Pm))
-    gr, indx, freq = EP.growth_rate({"Q":y,"iRm":iRm,"iR":iRe})
-    ret = gr+1j*freq
-    return ret
-
-cf = CriticalFinder(shim, comm)
+cf = CriticalFinder(EP, ("Rm", "Q"), comm, find_freq=False)
 
 # generating the grid is the longest part
 start = time.time()
-mins = np.array((4.6, 0.5))
-maxs = np.array((5.5, 1.5))
-ns   = np.array((10,10))
-logs = np.array((False, False))
+nx = 10
+ny = 10
+xpoints = np.linspace(4.6, 5.5, nx)
+ypoints = np.linspace(0.5, 1.5, ny)
 #cf.load_grid('mri_growth_rates.h5')
-cf.grid_generator(mins, maxs, ns, logs=logs)
+cf.grid_generator((xpoints, ypoints))
 if comm.rank == 0:
     cf.save_grid('mri_growth_rates')
 end = time.time()
 print("grid generation time: {:10.5f} sec".format(end-start))
-
-cf.root_finder()
-crit = cf.crit_finder(find_freq=True)
+crit = cf.crit_finder(polish_roots=True)
 
 if comm.rank == 0:
-    print("critical wavenumber alpha = {:10.5f}".format(crit[0]))
     print("critical Re = {:10.5f}".format(crit[1]))
     cf.plot_crit()
     cf.save_grid('mri_growth_rates')
