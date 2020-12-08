@@ -79,12 +79,12 @@ def test_rbc_crit_find(z):
     rb_evp = rbc_problem('EVP', d, stress_free=True)
     EP = eig.Eigenproblem(rb_evp, sparse=False)
     comm = MPI.COMM_WORLD
-    cf = eig.CriticalFinder(EP, ("Ra", "k"), comm, find_freq=True)
+    cf = eig.CriticalFinder(EP, ("k", "Ra"), comm, find_freq=True)
 
     nx = 10
     ny = 10
-    xpoints = np.linspace(550, 700, nx)
-    ypoints = np.linspace(2, 2.4, ny)
+    xpoints = np.linspace(2, 2.4, nx)
+    ypoints = np.linspace(550, 700, ny)
 
     cf.grid_generator((xpoints, ypoints))
     crit = cf.crit_finder(polish_roots=True, tol=1e-6, method='Powell')

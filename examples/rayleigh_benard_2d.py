@@ -68,21 +68,21 @@ elif stress_free:
 # create an Eigenproblem object
 EP = Eigenproblem(rayleigh_benard, sparse=True)
 
-cf = CriticalFinder(EP, ("Ra", "k"), comm, find_freq = True)
+cf = CriticalFinder(EP, ("k","Ra"), comm, find_freq = True)
 
 # generating the grid is the longest part
 start = time.time()
 if no_slip:
     nx = 20
     ny = 20
-    xpoints = np.linspace(1000, 3000, nx)
-    ypoints = np.linspace(2, 4, ny)
+    xpoints = np.linspace(2, 4, ny)
+    ypoints = np.linspace(1000, 3000, nx)
 elif stress_free:
     #657.5, 2.221
     nx = 10
     ny = 10
-    xpoints = np.linspace(550, 700, nx)
-    ypoints = np.linspace(2, 2.4, ny)
+    xpoints = np.linspace(2, 2.4, ny)
+    ypoints = np.linspace(550, 700, nx)
 
 try:
     cf.load_grid('{}.h5'.format(file_name))
@@ -103,4 +103,4 @@ if comm.rank == 0:
     print("critical Ra = {:10.5f}".format(crit[1]))
     print("critical freq = {:10.5f}".format(crit[2]))
 
-    cf.plot_crit(title=file_name, transpose=True, xlabel='kx', ylabel='Ra')
+    cf.plot_crit(title=file_name, xlabel='kx', ylabel='Ra')

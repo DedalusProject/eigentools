@@ -61,9 +61,8 @@ class CriticalFinder:
         Generates a 2-dimensional grid over the specified parameter
         space of an eigenvalue problem.  
         """
-        self.parameter_grids = np.meshgrid(*points, indexing='ij')
+        self.parameter_grids = np.meshgrid(*points)
         self.evalue_grid = np.zeros(self.parameter_grids[0].shape, dtype=np.complex128)
-        self.N = self.evalue_grid.ndim
         dims = self.evalue_grid.shape
         # Split parameter load across processes
         load_indices = load_balance(dims, self.size)
@@ -93,10 +92,12 @@ class CriticalFinder:
     @CachedAttribute
     def _interpolator(self):
         """Creates and then uses a 2D grid interpolator for growth rate
+
+        NB: this transposes x and y for the root finding step, because that requires the function to be interpolated along the FIRST axis
         """
         xx = self.parameter_grids[0]
         yy = self.parameter_grids[1]
-        return interpolate.interp2d(xx, yy, self.evalue_grid.real)
+        return interpolate.interp2d(yy.T, xx.T, self.evalue_grid.real.T)
 
     @CachedAttribute
     def _freq_interpolator(self):
@@ -143,10 +144,10 @@ class CriticalFinder:
     def _root_finder(self):
         yy = self.parameter_grids[1]
         xx = self.parameter_grids[0]
-        self.roots = np.zeros_like(yy[0,:])
-        for j,y in enumerate(yy[0,:]):
+        self.roots = np.zeros_like(xx[0,:])
+        for j,x in enumerate(xx[0,:]):
             try:
-                self.roots[j] = optimize.brentq(self._interpolator,xx[0,0],xx[-1,0],args=(y))
+                self.roots[j] = optimize.brentq(self._interpolator,yy[0,0],yy[-1,0],args=(x))
             except ValueError:
                 self.roots[j] = np.nan
 
@@ -161,19 +162,19 @@ class CriticalFinder:
             return
         self._root_finder()
         mask = np.isfinite(self.roots)
-        yy_root = self.parameter_grids[1][0,mask]
+        xx_root = self.parameter_grids[0][0,mask]
         rroot = self.roots[mask]
-        self.root_fn = interpolate.interp1d(yy_root,rroot,kind='cubic')
+
+        self.root_fn = interpolate.interp1d(xx_root,rroot,kind='cubic')
         
-        mid = yy_root.shape[0]//2
+        mid = xx_root.shape[0]//2
         
-        bracket = [yy_root[0],yy_root[mid],yy_root[-1]]
+        bracket = [xx_root[0],xx_root[mid],xx_root[-1]]
         
         self.opt = optimize.minimize_scalar(self.root_fn,bracket=bracket)
 
         x_crit = self.opt['x']
         y_crit = self.opt['fun'].item()
-
         if self.find_freq:
             crit_freq = self._freq_interpolator(x_crit, y_crit)[0]
             crits = (x_crit, y_crit, crit_freq)
@@ -201,9 +202,9 @@ class CriticalFinder:
         # minimize absolute value of growth rate
         function = lambda args: np.abs(self.growth_rate(args)[0])
         if self.find_freq:
-            x0 = guess[-2::-1]
+            x0 = guess[:-1]
         else:
-            x0 = guess[::-1]
+            x0 = guess
         search_result = optimize.minimize(function, x0, 
                                           tol=tol, options={'maxiter': maxiter}, method=method)
 
@@ -214,7 +215,7 @@ class CriticalFinder:
         
         if search_result.success:
             logger.info('Minimum growth rate of {} found'.format(search_result.fun))
-            results = list(search_result.x[::-1])
+            results = list(search_result.x)
             if self.find_freq:
                 results += list(freq)
             return results
