@@ -150,7 +150,7 @@ class CriticalFinder:
             except ValueError:
                 self.roots[j] = np.nan
 
-    def crit_finder(self):
+    def crit_finder(self, polish_roots=False, tol=1e-3, method='Powell', maxiter=200, **kwargs):
         """returns a tuple of the x value at which the minimum (critical value
         occurs), and the y value. 
         output
@@ -176,30 +176,34 @@ class CriticalFinder:
 
         if self.find_freq:
             crit_freq = self._freq_interpolator(x_crit, y_crit)[0]
-            return (x_crit, y_crit, crit_freq)
+            crits = (x_crit, y_crit, crit_freq)
+            if polish_roots:
+                crits = self.critical_polisher(crits, tol=tol, method=method, maxiter=maxiter, **kwargs)
 
-        return (x_crit, y_crit)
+            return crits
+        
+        crits = (x_crit, y_crit)
+        if polish_roots:
+            crits = self.critical_polisher(crits, tol=tol, method=method, maxiter=maxiter, **kwargs)
 
-    def critical_polisher(self, tol=1e-3, method='Powell', maxiter=200, **kwargs):
+        return crits
+
+    def critical_polisher(self, guess, tol=1e-3, method='Powell', maxiter=200, **kwargs):
         """
-        Polishes the critical value.  Runs the self.crit_finder function
-        to get a good initial guess for where the crit is, then uses scipy's
+        Polishes a guess for the critical value using scipy's
         optimization routines to find a more precise location of the critical value.
 
         Inputs:
         -------
             tol, method, maxiter -- All inputs to the scipy.optimize.minimize function
         """
-        if self.rank != 0:
-            return [None]*len(self.evalue_grid)
-        crits = self.crit_finder(**kwargs)
-        if np.isnan(crits[0]):
-            raise ValueError("crit_finder returned NaN, cannot find exact crit")
-
+        
         # minimize absolute value of growth rate
         function = lambda args: np.abs(self.growth_rate(args)[0])
         if self.find_freq:
-            x0 = crits[-2::-1]
+            x0 = guess[-2::-1]
+        else:
+            x0 = guess[::-1]
         search_result = optimize.minimize(function, x0, 
                                           tol=tol, options={'maxiter': maxiter}, method=method)
 
@@ -210,10 +214,13 @@ class CriticalFinder:
         
         if search_result.success:
             logger.info('Minimum growth rate of {} found'.format(search_result.fun))
-            return list(search_result.x[::-1]) + list(freq)
+            results = list(search_result.x[::-1])
+            if self.find_freq:
+                results += list(freq)
+            return results
         else:
             logger.warning('Optimize results not fully converged, returning crit_finder results.')
-            return crits
+            return guess
 
     def plot_crit(self, title='growth_rates', transpose=False, xlabel = "", ylabel = "", zlabel="growth rate", cmap="viridis"):
         """Create a 2D colormap of the grid of growth rates.  If available, the
