@@ -56,7 +56,9 @@ class CriticalFinder:
         self.rank = self.comm.rank
         self.find_freq = find_freq
 
-    def grid_generator(self, points):
+        self.roots = None
+
+    def grid_generator(self, points, sparse=False, interpolate_sparse=False):
         """
         Generates a 2-dimensional grid over the specified parameter
         space of an eigenvalue problem.  
@@ -85,9 +87,9 @@ class CriticalFinder:
         self.comm.Gatherv(local_grid,[data,rec_counts,displacements, MPI.F_DOUBLE_COMPLEX])
         self.evalue_grid = data
 
-    def growth_rate(self, values):
+    def growth_rate(self, values, **kwargs):
         var_dict = {self.param_names[i]: v for i,v in enumerate(values)}
-        return self.eigenproblem.growth_rate(var_dict) #solve
+        return self.eigenproblem.growth_rate(var_dict, **kwargs) #solve
         
     @CachedAttribute
     def _interpolator(self):

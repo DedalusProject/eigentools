@@ -14,12 +14,11 @@ from . import tools
 logger = logging.getLogger(__name__.split('.')[-1])
 
 class Eigenproblem():
-    def __init__(self, EVP, sparse=False, reject=True, factor=1.5, scales=1, drift_threshold=1e6, use_ordinal=False, grow_func=lambda x: x.real, freq_func=lambda x: x.imag):
+    def __init__(self, EVP, reject=True, factor=1.5, scales=1, drift_threshold=1e6, use_ordinal=False, grow_func=lambda x: x.real, freq_func=lambda x: x.imag):
         """
         EVP is dedalus EVP object
         """
         self.reject = reject
-        self.sparse = sparse
         self.factor = factor
         self.EVP = EVP
         self.solver = EVP.build_solver()
@@ -48,27 +47,28 @@ class Eigenproblem():
     def grid(self):
         return self.EVP.domain.grids(scales=self.scales)[0]
 
-    def solve(self, parameters=None, pencil=0, N=15, target=0):
+    def solve(self, sparse=False, parameters=None, pencil=0, N=15, target=0, **kwargs):
         if parameters:
             self._set_parameters(parameters)
         self.pencil = pencil
         self.N = N
         self.target = target
+        self.solver_kwargs = kwargs
 
-        self._run_solver(self.solver)
+        self._run_solver(self.solver, sparse)
         self.evalues_low = self.solver.eigenvalues
 
         if self.reject:
-            self._run_solver(self.hires_solver)
+            self._run_solver(self.hires_solver, sparse)
             self.evalues_high = self.hires_solver.eigenvalues
             self._reject_spurious()
         else:
             self.evalues = self.evalues_lowres
             self.evalues_index = np.arange(len(self.evalues),dtype=int)
 
-    def _run_solver(self, solver):
-        if self.sparse:
-            solver.solve_sparse(solver.pencils[self.pencil], N=self.N, target=self.target, rebuild_coeffs=True)
+    def _run_solver(self, solver, sparse):
+        if sparse:
+            solver.solve_sparse(solver.pencils[self.pencil], N=self.N, target=self.target, rebuild_coeffs=True, **self.solver_kwargs)
         else:
             solver.solve_dense(solver.pencils[self.pencil], rebuild_coeffs=True)
 
