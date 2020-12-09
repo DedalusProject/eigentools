@@ -40,7 +40,7 @@ ky = 0
 δ = 0.1
 Ri = 2
 L = 1
-Hy = 0.05
+Hy =-0.05
 ΔB = 10
 
 # discretization parameters
@@ -79,9 +79,9 @@ evp.add_bc('right(w) = 0')
 #evp.add_bc('left(w) = 0')
 evp.add_bc('left(w + dt(p/ΔB) + Hy*v) = 0')
 
-EP = Eigenproblem(evp, sparse=False, grow_func=lambda x: -x.imag, freq_func=lambda x: x.real)
+EP = Eigenproblem(evp, grow_func=lambda x: -x.imag, freq_func=lambda x: x.real)
 
-rate, indx, freq = EP.growth_rate()
+rate, indx, freq = EP.growth_rate(sparse=False)
 print("fastest growing mode: {} @ freq {}".format(rate, freq))
 
 # produce a 1-D plot of the most unstable eigenmode
