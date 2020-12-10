@@ -13,8 +13,10 @@ jobs:
       with:
         ref: 'v2.0-refactor'
     - name: build
-      run: conda run -n dedalus pip install -e .
+      run: /usr/share/miniconda/envs/dedalus/bin/pip install -e .
         
     - name: test
-      run: conda run -n dedalus pytest 
+      run: /usr/share/miniconda/envs/dedalus/bin/pytest
+        
+        
         
