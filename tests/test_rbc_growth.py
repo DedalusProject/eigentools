@@ -50,18 +50,18 @@ def test_rbc_growth(z, sparse):
 
     rayleigh_benard = rbc_problem('EVP',d)
 
-    EP = eig.Eigenproblem(rayleigh_benard, sparse=sparse)
+    EP = eig.Eigenproblem(rayleigh_benard)
 
-    growth, index, freq = EP.growth_rate()
+    growth, index, freq = EP.growth_rate(sparse=sparse)
     assert np.allclose((growth, freq), (0.0018125573647729994,0.)) 
  
 @pytest.mark.parametrize('z', [de.Chebyshev('z',16, interval=(0, 1))])
 def test_rbc_output(z):
     d = de.Domain([z])
     rb_evp = rbc_problem('EVP',d)
-    EP = eig.Eigenproblem(rb_evp, sparse=False)
+    EP = eig.Eigenproblem(rb_evp)
 
-    growth, index, freq = EP.growth_rate()
+    growth, index, freq = EP.growth_rate(sparse=False)
 
     x = de.Fourier('x', 32)
     ivp_domain = de.Domain([x,z],grid_dtype=np.float64)
@@ -77,7 +77,7 @@ def test_rbc_output(z):
 def test_rbc_crit_find(z):
     d = de.Domain([z], comm=MPI.COMM_SELF)
     rb_evp = rbc_problem('EVP', d, stress_free=True)
-    EP = eig.Eigenproblem(rb_evp, sparse=False)
+    EP = eig.Eigenproblem(rb_evp)
     comm = MPI.COMM_WORLD
     cf = eig.CriticalFinder(EP, ("k", "Ra"), comm, find_freq=True)
 
@@ -86,7 +86,7 @@ def test_rbc_crit_find(z):
     xpoints = np.linspace(2, 2.4, nx)
     ypoints = np.linspace(550, 700, ny)
 
-    cf.grid_generator((xpoints, ypoints))
+    cf.grid_generator((xpoints, ypoints),sparse=False)
     crit = cf.crit_finder(polish_roots=True, tol=1e-6, method='Powell')
 
     Rac = 27*np.pi**4/4.

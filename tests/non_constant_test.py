@@ -49,9 +49,9 @@ def test_non_constant(Nx, sparse, ordinal):
     prob.add_bc("left(yx) = 0")
     prob.add_bc("right(yx) = 0")
 
-    EP = Eigenproblem(prob, sparse=sparse, use_ordinal=ordinal)
+    EP = Eigenproblem(prob, use_ordinal=ordinal)
 
-    EP.solve()
+    EP.solve(sparse=sparse)
     indx = EP.evalues_good.argsort()
 
     five_evals = EP.evalues_good[indx][0:5]

@@ -44,18 +44,18 @@ orr_somerfeld.add_bc('left(wz) = 0')
 orr_somerfeld.add_bc('right(wz) = 0')
 
 # create an Eigenproblem object
-EP = Eigenproblem(orr_somerfeld, sparse=True)
+EP = Eigenproblem(orr_somerfeld)
 
 # create a shim function to translate (x, y) to the parameters for the eigenvalue problem:
 
-cf = CriticalFinder(EP,("Re", "alpha"), comm, find_freq=True)
+cf = CriticalFinder(EP,("alpha", "Re"), comm, find_freq=True)
 
 # generating the grid is the longest part
 start = time.time()
 nx = 20
 ny = 20
-xpoints = np.linspace(5500, 6000, nx)
-ypoints = np.linspace(1.0, 1.1, ny)
+xpoints = np.linspace(1.0, 1.1, nx)
+ypoints = np.linspace(5500, 6000, ny)
 try:
     cf.load_grid('{}.h5'.format(file_name))
 except:

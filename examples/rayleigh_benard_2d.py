@@ -66,7 +66,7 @@ elif stress_free:
     rayleigh_benard.add_bc('right(uz) = 0')
 
 # create an Eigenproblem object
-EP = Eigenproblem(rayleigh_benard, sparse=True)
+EP = Eigenproblem(rayleigh_benard)
 
 cf = CriticalFinder(EP, ("k","Ra"), comm, find_freq = True)
 
@@ -87,7 +87,7 @@ elif stress_free:
 try:
     cf.load_grid('{}.h5'.format(file_name))
 except:
-    cf.grid_generator((xpoints, ypoints))
+    cf.grid_generator((xpoints, ypoints), sparse=True)
     cf.save_grid(file_name)
 
 end = time.time()

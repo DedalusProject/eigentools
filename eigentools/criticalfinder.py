@@ -153,7 +153,7 @@ class CriticalFinder:
             except ValueError:
                 self.roots[j] = np.nan
 
-    def crit_finder(self, polish_roots=False, tol=1e-3, method='Powell', maxiter=200, **kwargs):
+    def crit_finder(self, polish_roots=False, polish_sparse=True, tol=1e-3, method='Powell', maxiter=200, **kwargs):
         """returns a tuple of the x value at which the minimum (critical value
         occurs), and the y value. 
         output
@@ -181,17 +181,19 @@ class CriticalFinder:
             crit_freq = self._freq_interpolator(x_crit, y_crit)[0]
             crits = (x_crit, y_crit, crit_freq)
             if polish_roots:
-                crits = self.critical_polisher(crits, tol=tol, method=method, maxiter=maxiter, **kwargs)
+                crits = self.critical_polisher(crits, sparse=polish_sparse,
+                                               tol=tol, method=method, maxiter=maxiter, **kwargs)
 
             return crits
         
         crits = (x_crit, y_crit)
         if polish_roots:
-            crits = self.critical_polisher(crits, tol=tol, method=method, maxiter=maxiter, **kwargs)
+            crits = self.critical_polisher(crits, sparse=polish_sparse,
+                                           tol=tol, method=method, maxiter=maxiter, **kwargs)
 
         return crits
 
-    def critical_polisher(self, guess, tol=1e-3, method='Powell', maxiter=200, **kwargs):
+    def critical_polisher(self, guess, tol=1e-3, method='Powell', maxiter=200, sparse=True, **kwargs):
         """
         Polishes a guess for the critical value using scipy's
         optimization routines to find a more precise location of the critical value.
@@ -202,7 +204,7 @@ class CriticalFinder:
         """
         
         # minimize absolute value of growth rate
-        function = lambda args: np.abs(self.growth_rate(args)[0])
+        function = lambda args: np.abs(self.growth_rate(args, sparse=sparse)[0])
         if self.find_freq:
             x0 = guess[:-1]
         else:

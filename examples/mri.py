@@ -54,7 +54,7 @@ mri.add_bc("left(Bx) = 0")
 mri.add_bc("right(Bx) = 0")
 
 # create an Eigenproblem object
-EP = Eigenproblem(mri, sparse=True)
+EP = Eigenproblem(mri)
 
 cf = CriticalFinder(EP, ("Q", "Rm"), comm, find_freq=False)
 
@@ -65,7 +65,7 @@ ny = 10
 xpoints = np.linspace(0.5, 1.5, nx)
 ypoints = np.linspace(4.6, 5.5, ny)
 #cf.load_grid('mri_growth_rates.h5')
-cf.grid_generator((xpoints, ypoints))
+cf.grid_generator((xpoints, ypoints), sparse=True)
 if comm.rank == 0:
     cf.save_grid('mri_growth_rates')
 end = time.time()
