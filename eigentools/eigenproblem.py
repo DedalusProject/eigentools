@@ -143,8 +143,8 @@ class Eigenproblem():
     def project_mode(self, index, domain, transverse_modes, all_modes=False):
         """projects a mode specified by index onto a domain 
 
-        inputs
-        ------
+        Parameters
+        ----------
         index : an integer giving the eigenmode to project
         domain : a domain to project onto
         transverse_modes : a tuple of mode numbers for the transverse directions
@@ -215,7 +215,7 @@ class Eigenproblem():
             ax.set_yscale('symlog')
         ax.set_xlabel(real_label, size = 15)
         ax.set_ylabel(imag_label, size = 15)
-
+        fig.tight_layout()
         fig.savefig('{}_spectrum_{}.png'.format(figtitle,spectype))
 
         return fig
