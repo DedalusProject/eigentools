@@ -175,13 +175,16 @@ class Eigenproblem():
 
         merge_process_files(base_name, cleanup=True)
 
-    def calc_ps(self, k, zgrid):
+    def calc_ps(self, k, zgrid, mu=0.):
         """computes epsilon-pseudospectrum for the eigenproblem.
         Parameters:
         k    : int
             number of eigenmodes in invariant subspace
         zgrid : tuple
             (real, imag) points
+
+        mu : complex
+            center point for pseudospectrum. 
         """
 
         self.solve(sparse=True, N=k) # O(N k)?
@@ -193,7 +196,6 @@ class Eigenproblem():
         Q, R = np.linalg.qr(V) # O(N k^2)
 
         # Compute approximate Schur factor
-        mu = 0.25
         E = -(self.solver.pencils[0].M_exp)
         A = (self.solver.pencils[0].L_exp)
         A_mu_E = A - mu*E
