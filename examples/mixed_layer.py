@@ -40,7 +40,7 @@ ky = 0
 δ = 0.1
 Ri = 2
 L = 1
-Hy =-0.05
+Hy = 0.05
 ΔB = 10
 
 # discretization parameters
@@ -77,7 +77,7 @@ evp.add_equation('dx(u) + dy(v) + dz(w) = 0')
 
 evp.add_bc('right(w) = 0')
 #evp.add_bc('left(w) = 0')
-evp.add_bc('left(w + dt(p/ΔB) + Hy*v) = 0')
+evp.add_bc('left(w + dt(p/ΔB) - Hy*v) = 0')
 
 EP = Eigenproblem(evp, grow_func=lambda x: -x.imag, freq_func=lambda x: x.real)
 
@@ -125,7 +125,7 @@ plot_tools.plot_bot_2d(fs['v'], axes=axes)
 
 # eta
 axes = mfig.add_axes(3,0, [0,0,1,1])
-axes.plot(xx[0,:],fs['p']['g'][:,0])
+axes.plot(xx[0,:],-fs['p']['g'][:,0])
 axes.set_xlabel('x')
 axes.set_ylabel(r'$\eta$')
 
