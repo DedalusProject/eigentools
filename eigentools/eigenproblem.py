@@ -175,6 +175,66 @@ class Eigenproblem():
 
         merge_process_files(base_name, cleanup=True)
 
+    def calc_ps(self, k, zgrid):
+        """computes epsilon-pseudospectrum for the eigenproblem.
+        Parameters:
+        k    : int
+            number of eigenmodes in invariant subspace
+        zgrid : tuple
+            (real, imag) points
+        """
+
+        self.solve(sparse=True, N=k) # O(N k)?
+        pre_right = self.solver.pencils[0].pre_right
+        pre_right_LU = scipy.sparse.linalg.splu(pre_right.tocsc()) # O(N)
+        V = pre_right_LU.solve(self.solver.eigenvectors) # O(N k)
+
+        # Orthogonalize invariant subspace
+        Q, R = np.linalg.qr(V) # O(N k^2)
+
+        # Compute approximate Schur factor
+        mu = 0.25
+        E = -(self.solver.pencils[0].M_exp)
+        A = (self.solver.pencils[0].L_exp)
+        A_mu_E = A - mu*E
+        A_mu_E_LU = scipy.sparse.linalg.splu(A_mu_E.tocsc()) # O(N)
+        Ghat = Q.conj().T @ A_mu_E_LU.solve(E @ Q) # O(N k^2)
+
+        # Invert-shift Schur factor
+        I = np.identity(k)
+        Gmu = np.linalg.inv(Ghat) + mu*I # O(k^3)
+
+        R = self._pseudo(Gmu, zgrid)
+        self.pseudospectrum = R
+        self.ps_real = zgrid[0]
+        self.ps_imag = zgrid[1]
+        
+    def _pseudo(self, L, zgrid, norm=-2):
+        """computes epsilon-pseudospectrum for a regular eigenvalue problem.
+
+        Uses resolvent; First definition (eq. 2.1) from Trefethen & Embree (1999)
+
+        sigma_eps = ||(z*I - L)**-1|| > eps**-1
+
+        By default uses 2-norm.
+
+        Parameters
+        ----------
+        L : square 2D ndarray
+            the matrix to be analyzed
+        zgrid : tuple
+            (real, imag) points
+        """
+        xx = zgrid[0]
+        yy = zgrid[1]
+        R = np.zeros((len(xx), len(yy)))
+        matsize = L.shape[0]
+        for j, y in enumerate(yy):
+            for i, x in enumerate(xx):
+                z = x + 1j*y
+                R[j, i] = np.linalg.norm((z*np.eye(matsize) - L), ord=norm)
+        return R
+
     def spectrum(self, figtitle='eigenvalue', spectype='good', xlog=True, ylog=True, real_label="real", imag_label="imag"):
         """Plots the spectrum.
 
