@@ -26,4 +26,6 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# ipython
+.ipynb_checkpoints/
 
