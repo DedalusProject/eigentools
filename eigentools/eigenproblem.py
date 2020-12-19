@@ -175,20 +175,33 @@ class Eigenproblem():
 
         merge_process_files(base_name, cleanup=True)
 
-    def calc_ps(self, k, zgrid, mu=0.):
+    def calc_ps(self, k, zgrid, mu=0., pencil=0, inner_product=None, norm=-2, maxiter=10, rtol=1e-3):
         """computes epsilon-pseudospectrum for the eigenproblem.
+
+        Uses the algorithm described in section 5 of 
+
+        Embree & Keeler (2017). SIAM J. Matrix Anal. Appl. 38, 3: 1028-1054.
+
+        to enable the approximation of epsilon-pseudospectra for arbitrary differential-algebraic 
+        equation systems.
+
+
         Parameters:
+        -----------
         k    : int
             number of eigenmodes in invariant subspace
         zgrid : tuple
             (real, imag) points
-
         mu : complex
             center point for pseudospectrum. 
+        pencil : int
+            pencil holding EVP
+        inner_product : function
+            a function that takes two field systems and computes their inner product 
         """
 
-        self.solve(sparse=True, N=k) # O(N k)?
-        pre_right = self.solver.pencils[0].pre_right
+        self.solve(sparse=True, N=k, pencil=pencil) # O(N k)?
+        pre_right = self.solver.pencils[pencil].pre_right
         pre_right_LU = scipy.sparse.linalg.splu(pre_right.tocsc()) # O(N)
         V = pre_right_LU.solve(self.solver.eigenvectors) # O(N k)
 
@@ -196,30 +209,91 @@ class Eigenproblem():
         Q, R = np.linalg.qr(V) # O(N k^2)
 
         # Compute approximate Schur factor
-        E = -(self.solver.pencils[0].M_exp)
-        A = (self.solver.pencils[0].L_exp)
+        E = -(self.solver.pencils[pencil].M_exp)
+        A = (self.solver.pencils[pencil].L_exp)
         A_mu_E = A - mu*E
         A_mu_E_LU = scipy.sparse.linalg.splu(A_mu_E.tocsc()) # O(N)
         Ghat = Q.conj().T @ A_mu_E_LU.solve(E @ Q) # O(N k^2)
 
         # Invert-shift Schur factor
         I = np.identity(k)
-        Gmu = np.linalg.inv(Ghat) + mu*I # O(k^3)
+        if inner_product is not None:
+            M = self.compute_mass_matrix(pre_right@Q, inner_product)
+            Z, S = np.linalg.qr(scipy.linalg.cholesky(M))
+            Gmu = S@np.linalg.inv(S@Ghat) + mu*I
+        else:
+            logger.warning("No inner product given. Using 2-norm of state vector coefficients. This is probably not physically meaningful, especially if you are using Chebyshev polynomials.")
+            Gmu = np.linalg.inv(Ghat) + mu*I # O(k^3)
 
-        R = self._pseudo(Gmu, zgrid)
-        self.pseudospectrum = R
+        self.pseudospectrum = self._pseudo(Gmu, zgrid, maxiter=maxiter, rtol=rtol)
         self.ps_real = zgrid[0]
         self.ps_imag = zgrid[1]
-        
-    def _pseudo(self, L, zgrid, norm=-2):
+
+    def compute_mass_matrix(self, Q, inner_product):
+        """Compute the mass matrix M using a given inner product
+
+        M must be hermitian, so we compute only half the inner products.
+
+        Parameters
+        ----------
+        Q : ndarray
+            Matrix of eigenvectors
+        inner_product : function
+            a function that takes two field systems and computes their inner product 
+        """
+        k = Q.shape[1]
+        M = np.zeros((k,k), dtype=np.complex128)
+        Xj = self._copy_system(self.solver.state)
+        Xi = self._copy_system(self.solver.state)
+
+        for j in range(k):
+            self.set_state(Xj, Q[:,j])
+            for i in range(j,k): # M must be hermitian
+                self.set_state(Xi, Q[:,i])
+                M[j,i] = inner_product(Xj, Xi)
+                M[i,j] = M[j,i].conj()
+
+        return M
+
+    def set_state(self, system, evector):
+        """
+        Set system to given evector
+
+        Parameters
+        ----------
+        system : FieldSystem
+            system to fill in
+        evector : ndarray
+            eigenvector
+        """
+        system.data[:] = 0
+        system.set_pencil(self.solver.eigenvalue_pencil, evector)
+        system.scatter()
+
+    def _copy_system(self, state):
+        fields = []
+        for f in state.fields:
+            field = f.copy()
+            field.name = f.name
+            fields.append(field)
+            
+        return FieldSystem(fields)
+
+    def _pseudo(self, L, zgrid, maxiter=10, rtol=1e-3):
         """computes epsilon-pseudospectrum for a regular eigenvalue problem.
 
-        Uses resolvent; First definition (eq. 2.1) from Trefethen & Embree (1999)
+        If maxiter is zero, uses a direct algorithm:
+        at point z in the complex plane, the resolvant R is calculated 
 
-        sigma_eps = ||(z*I - L)**-1|| > eps**-1
+        R = ||z*I - L||_{-2} 
 
-        By default uses 2-norm.
+        finding the maximum singular value.
+        
+        If maxiter is not zero, uses the iterative algorithm from figure 39.3 (p.375) of
 
+        Trefethen & Embree, "Spectra and Pseudospectra: The Behavior of Nonnormal Matrices and Operators" 
+        (2005, Princeton University Press) 
+        
         Parameters
         ----------
         L : square 2D ndarray
@@ -231,10 +305,43 @@ class Eigenproblem():
         yy = zgrid[1]
         R = np.zeros((len(xx), len(yy)))
         matsize = L.shape[0]
+        T, Z = scipy.linalg.schur(L, output='complex')
+        if maxiter == 0:
+            logger.debug("Using direct solver for calculating pseudospectrum")
+        else:
+            logger.debug("Using iterative solver for calculating pseudospectrum")
         for j, y in enumerate(yy):
             for i, x in enumerate(xx):
-                z = x + 1j*y
-                R[j, i] = np.linalg.norm((z*np.eye(matsize) - L), ord=norm)
+                z = (x + 1j*y)
+                # if _maxiter is set to zero
+                if maxiter == 0:
+                    R[j,i] = np.linalg.norm((z*np.eye(matsize) - L), ord=-2)
+                else:
+                    T1 = z*np.eye(matsize) - T
+                    T2 = T1.conj().T
+                    sigold = 0
+                    qold = np.zeros(matsize,dtype=np.complex128)
+                    beta = 0
+
+                    q = np.random.randn(matsize)+1j*np.random.randn(matsize)
+                    q /= np.linalg.norm(q)
+                    H = np.zeros((maxiter, maxiter), dtype=np.complex128)
+                    for p in range(maxiter):
+                        v = scipy.linalg.solve_triangular(T1, scipy.linalg.solve_triangular(T2,q,lower=True)) - beta*qold
+                        alpha = np.dot(q.conj(), v)
+                        v -= alpha*q
+                        beta = np.linalg.norm(v)
+                        qold = q
+                        q = v/beta
+                        H[p+1,p] = beta
+                        H[p,p+1] = beta
+                        H[p,p]   = alpha
+                        sig = np.max(np.linalg.eigvalsh(H[:p+1,:p+1]))
+                        if np.abs(sigold/sig - 1) < rtol:
+                            break
+                        sigold = sig
+
+                    R[j, i] = 1/np.sqrt(sig)
         return R
 
     def spectrum(self, figtitle='eigenvalue', spectype='good', xlog=True, ylog=True, real_label="real", imag_label="imag"):
