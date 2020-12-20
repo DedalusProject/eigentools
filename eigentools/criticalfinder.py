@@ -9,26 +9,6 @@ from dedalus.tools.cache import CachedAttribute
 
 logger = logging.getLogger(__name__.split('.')[-1])
 
-def load_balance(dims, nproc):
-    """
-    Evenly splits up tasks over specified number of processes.
-
-    Parameters
-    ----------
-    dims  : ndarray
-            An N-length array, containing the size of each parameter dimension the eigenvalue problem will be solved on.
-    nproc : int
-            The number of processes to split up the problem over
-    
-    Returns
-    -------
-    ndarray
-       An array of arrays, where the 0th array contains the task indices for the 0th process, and so on.
-
-    """
-    index = np.arange(np.prod(dims))
-    return np.array_split(index,nproc)
-
 class CriticalFinder:
     """finds critical parameters for eigenvalue problems.
 
@@ -67,7 +47,8 @@ class CriticalFinder:
         self.evalue_grid = np.zeros(self.parameter_grids[0].shape, dtype=np.complex128)
         dims = self.evalue_grid.shape
         # Split parameter load across processes
-        load_indices = load_balance(dims, self.size)
+        index = np.arange(np.prod(dims))
+        load_indices = np.array_split(index,self.size)
         my_indices = load_indices[self.rank]
 
         # Calculate growth values for local process grid
