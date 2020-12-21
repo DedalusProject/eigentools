@@ -59,7 +59,7 @@ ypoints = np.linspace(5500, 6000, ny)
 try:
     cf.load_grid('{}.h5'.format(file_name))
 except:
-    cf.grid_generator((xpoints, ypoints))
+    cf.grid_generator((xpoints, ypoints), sparse=True)
     if comm.rank == 0:
         cf.save_grid(file_name)
 end = time.time()

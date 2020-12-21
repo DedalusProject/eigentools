@@ -86,7 +86,7 @@ def test_rbc_crit_find(z):
     xpoints = np.linspace(2, 2.4, nx)
     ypoints = np.linspace(550, 700, ny)
 
-    cf.grid_generator((xpoints, ypoints),sparse=False)
+    cf.grid_generator((xpoints, ypoints),sparse=True)
     crit = cf.crit_finder(polish_roots=True, tol=1e-6, method='Powell')
 
     Rac = 27*np.pi**4/4.

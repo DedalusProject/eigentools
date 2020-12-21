@@ -75,7 +75,7 @@ class CriticalFinder:
             unraveled_index = np.unravel_index(index, dims)
             values = [self.parameter_grids[i][unraveled_index] for i,v in enumerate(self.parameter_grids)]
 
-            gr, indx, freq = self._growth_rate(values)
+            gr, indx, freq = self._growth_rate(values, sparse=sparse)
             local_grid[n] = gr + 1j*freq
 
         # Communicate growth modes to root
