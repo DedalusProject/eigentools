@@ -12,20 +12,33 @@ logger = logging.getLogger(__name__.split('.')[-1])
 class CriticalFinder:
     """finds critical parameters for eigenvalue problems.
 
-    This class provides simple tools for finding the critical
-    parameters for the linear (in)stability of a given flow. The parameter space must be 2D; typically this will be (k, Re), where
-    k is a wavenumber and Re is some control parameter (e. g. Reynolds or Rayleigh). However, this is completely user controllable.
+    This class provides simple tools for finding the critical parameters
+    for the linear (in)stability of a given flow. The parameter space must
+    be 2D; typically this will be (k, Re), where k is a wavenumber and Re
+    is some control parameter (e. g. Reynolds or Rayleigh). The parameters
+    are defined by the underlying Eigenproblem object.
 
-    Attributes:
-    -----------
-    eigenproblem: An eigentools eigenproblem object
-    comm:       The MPI comm group to share jobs across
-    nproc:      The size of comm
-    rank:       The local processor's rank in comm
-    parameter_grids:  NumPy mesh grids containing the input values of the EVP over which
-                the criticalfinder will search for the critical value.
-    evalue_grid: A NumPy array of complex values, containing the maximum growth rates
-                of the EVP for the corresponding input values. 
+    Parameters
+    ----------
+    eigenproblem: Eigenproblem
+        An eigentools eigenproblem object over which to find critical
+        parameters
+    param_names : tuple of str
+        The names of parameters to search over
+    comm : mpi4py.MPI.Intracomm
+        The MPI comm group to share jobs across
+    find_freq : bool, optional
+        If True, also find frequency at critical point
+
+    Attributes
+    ----------
+    parameter_grids:  
+        NumPy mesh grids containing the parameter values for the EVP
+    evalue_grid: 
+        NumPy array of complex values, containing the maximum growth rates
+        of the EVP for the corresponding input values.
+    roots : ndarray
+        Array of roots along axis 1 of parameter_grid
     """
     
     def __init__(self, eigenproblem, param_names, comm, find_freq=False):
@@ -39,9 +52,13 @@ class CriticalFinder:
         self.roots = None
 
     def grid_generator(self, points, sparse=False):
-        """
-        Generates a 2-dimensional grid over the specified parameter
-        space of an eigenvalue problem.  
+        """Generates a grid of eigenvalues over the specified parameter
+        space of an eigenvalue problem.
+
+        Parameters
+        ----------
+        points : tuple of ndarray
+            The parameter values over which to find the critical value
         """
         self.parameter_grids = np.meshgrid(*points)
         self.evalue_grid = np.zeros(self.parameter_grids[0].shape, dtype=np.complex128)
@@ -58,7 +75,7 @@ class CriticalFinder:
             unraveled_index = np.unravel_index(index, dims)
             values = [self.parameter_grids[i][unraveled_index] for i,v in enumerate(self.parameter_grids)]
 
-            gr, indx, freq = self.growth_rate(values)
+            gr, indx, freq = self._growth_rate(values)
             local_grid[n] = gr + 1j*freq
 
         # Communicate growth modes to root
@@ -68,7 +85,14 @@ class CriticalFinder:
         self.comm.Gatherv(local_grid,[data,rec_counts,displacements, MPI.F_DOUBLE_COMPLEX])
         self.evalue_grid = data
 
-    def growth_rate(self, values, **kwargs):
+    def _growth_rate(self, values, **kwargs):
+        """Compute growth rate at values
+
+        Parameters
+        ----------
+        values : dict
+            Dictionary of parameter names and values
+        """
         var_dict = {self.param_names[i]: v for i,v in enumerate(values)}
         return self.eigenproblem.growth_rate(var_dict, **kwargs) #solve
         
@@ -76,7 +100,8 @@ class CriticalFinder:
     def _interpolator(self):
         """Creates and then uses a 2D grid interpolator for growth rate
 
-        NB: this transposes x and y for the root finding step, because that requires the function to be interpolated along the FIRST axis
+        NB: this transposes x and y for the root finding step, because that
+        requires the function to be interpolated along the FIRST axis
         """
         xx = self.parameter_grids[0]
         yy = self.parameter_grids[1]
@@ -94,9 +119,10 @@ class CriticalFinder:
         """
         Load a grid file, in the format as created in save_grid.
 
-        Inputs:
-        -------
-            filename:   The name of the .h5 file containing the grid data
+        Parameters
+        ----------
+        filename : str
+            The name of the .h5 file containing the grid data
         """
         with h5py.File(filename,'r') as infile:
             self.parameter_grids = [k[()] for k in infile.values() if 'xyz' in k.name]
@@ -109,14 +135,11 @@ class CriticalFinder:
         Saves the grids of all input parameters as well as the growth rate
         grid that has been solved for.
 
-        Inputs:
-        -------
-            filen   -- A file stem, which DOES NOT specify the file type. The
-                       grid will be saved to a file called filen.h5
-        Example:
-        --------
-        file_name = 'my_grid'
-        my_cf.save_grid(file_name) #creates a file called my_grid.h5
+        Parameters
+        ----------
+        filename : str
+           A file stem, which DOES NOT include the file type extension. The
+           grid will be saved to a file called filen.h5
         """
         if self.comm.rank == 0:
             with h5py.File(filename+'.h5','w') as outfile:
@@ -125,6 +148,9 @@ class CriticalFinder:
                     outfile.create_dataset('xyz_{}'.format(i),data=grid)
 
     def _root_finder(self):
+        """Find rooots from interpolated values at each point along zero axis of parameter_grid
+
+        """
         yy = self.parameter_grids[1]
         xx = self.parameter_grids[0]
         self.roots = np.zeros_like(xx[0,:])
@@ -135,11 +161,33 @@ class CriticalFinder:
                 self.roots[j] = np.nan
 
     def crit_finder(self, polish_roots=False, polish_sparse=True, tol=1e-3, method='Powell', maxiter=200, **kwargs):
-        """returns a tuple of the x value at which the minimum (critical value
-        occurs), and the y value. 
-        output
+        """returns parameters at which critical eigenvalue occurs and optionally frequency at that value. 
+
+        The critical parameter is defined as the absolute minimum of the
+        growth rate, defined in the Eigenproblem via its grow_func. If
+        frequency is to be found also, returns the frequnecy defined in the
+        Eigenproblem via its freq_func.
+
+        If find_freq is True, returns (critical parameter 1, critical
+        parameter 2, frequency); otherwise returns (critical parameter 1,
+        critical parameter 2)
+
+        Parameters
+        ----------
+        polish_roots : bool, optional
+            If true, use optimization routines to polish critical value (default: False)
+        polish_sparse : bool, optional
+            If true, use the sparse solver when polishing roots (default: True)
+        tol : float, optional
+            Tolerance for polishing routine (default: 1e-3)
+        method : str, optional
+            Method for scipy.optimize used for polishing (default: Powell)
+        maxiter : int, optional
+            Maximum number of optimization iterations used for polishing (default: 200)
+
+        Returns
         ------
-        (x_crit, y_crit) 
+        tuple
         """
         if self.rank != 0:
             return
@@ -174,18 +222,28 @@ class CriticalFinder:
 
         return crits
 
-    def critical_polisher(self, guess, tol=1e-3, method='Powell', maxiter=200, sparse=True, **kwargs):
+    def critical_polisher(self, guess, sparse=True, tol=1e-3, method='Powell', maxiter=200, **kwargs):
         """
-        Polishes a guess for the critical value using scipy's
-        optimization routines to find a more precise location of the critical value.
+        Polishes a guess for the critical value using scipy's optimization
+        routines to find a more precise location of the critical value.
 
-        Inputs:
-        -------
-            tol, method, maxiter -- All inputs to the scipy.optimize.minimize function
+        Parameters
+        ----------
+        guess : complex
+            Initial guess for optimization routines
+        sparse : bool, optional
+            If true, use the sparse solver when polishing roots (default: True)
+        tol : float, optional
+            Tolerance for polishing routine (default: 1e-3)
+        method : str, optional
+            Method for scipy.optimize used for polishing (default: Powell)
+        maxiter : int, optional
+            Maximum number of optimization iterations used for polishing
+            (default: 200)
         """
         
         # minimize absolute value of growth rate
-        function = lambda args: np.abs(self.growth_rate(args, sparse=sparse)[0])
+        function = lambda args: np.abs(self._growth_rate(args, sparse=sparse)[0])
         if self.find_freq:
             x0 = guess[:-1]
         else:
@@ -209,16 +267,25 @@ class CriticalFinder:
             return guess
 
     def plot_crit(self, title='growth_rates', transpose=False, xlabel = None, ylabel = None, zlabel="growth rate", cmap="viridis"):
-        """Create a 2D colormap of the grid of growth rates.  If available, the
-            root values that have been found will be plotted over the colormap
+        """Create a 2D colormap of the grid of growth rates.  
 
-            Inputs:
-            -------
-            title       - The name of the plot, which will be saved out to "title".png
-            transpose   - If True, plot dim 0 on the y axis and dim 1 on the x axis.
-                          Otherwise, plot it the other way around.
-            xlabel      - The x-label of the plot
-            ylabel      - The y-label of the plot
+        If available, the root values that have been found will be plotted
+        over the colormap.
+
+        Parameters
+        ----------
+        title : str, optional
+            The name of the plot, which will be saved to "title".png
+        transpose : bool, optional
+            If True, plot dim 0 on the y axis and dim 1 on the x axis.
+        xlabel : str, optional
+            If not None, the x-label of the plot. Otherwise, use parameter name from EVP
+        ylabel : str, optional 
+            If not None, the y-label of the plot. Otherwise, use parameter name from EVP
+        zlabel : str, optional
+            Label for the colorbar. (default: growth rate)
+        cmp : str, optional
+            matplotlib colormap name (default: viridis)
         """
         if self.rank != 0:
             return

@@ -15,8 +15,68 @@ logger = logging.getLogger(__name__.split('.')[-1])
 
 class Eigenproblem():
     def __init__(self, EVP, reject=True, factor=1.5, scales=1, drift_threshold=1e6, use_ordinal=False, grow_func=lambda x: x.real, freq_func=lambda x: x.imag):
-        """
-        EVP is dedalus EVP object
+        """An object for feature-rich eigenvalue analysis.
+
+        Eigenproblem provides support for common tasks in eigenvalue
+        analysis. Dedalus EVP objects compute raw eigenvalues and
+        eigenvectors for a given problem; Eigenproblem provides support for
+        numerous common tasks required for scientific use of those
+        solutions. This includes rejection of inaccurate eigenvalues and
+        analysis of those rejection criteria, plotting of eigenmodes and
+        spectra, and projection of 1-D eigenvectors onto 2- or 3-D domains
+        for use as initial conditions in subsequent initial value problems.
+
+        Additionally, Eigenproblems can compute epsilon-pseudospectra for
+        arbitrary Dedalus differential-algebraic equations.
+        
+
+        Parameters
+        ----------
+        EVP : dedalus.core.problems.EigenvalueProblem
+            The Dedalus EVP object containing the equations to be solved
+        reject : bool, optional
+            whether or not to reject spurious eigenvalues (default: True)
+        factor : float, optional
+            The factor by which to multiply the resolution. 
+            NB: this must be a rational number such that factor times the
+            resolution of EVP is an integer. (default: 1.5)
+        scales : float, optional
+            A multiple for setting the grid resolution.  (default: 1)
+        drift_threshold : float, optional
+            Inverse drift ratio threshold for keeping eigenvalues during
+            rejection (default: 1e6)
+        use_ordinal : bool, optional
+            If true, use ordinal method from Boyd (1989); otherwise use
+            nearest (default: False)
+        grow_func : func
+            A function that takes a complex input and returns the growth
+            rate as defined by the EVP (default: uses real part)
+        freq_func : func
+            A function that takes a complex input and returns the frequency
+            as defined by the EVP (default: uses imaginary part)
+
+        Attributes
+        ----------
+        evalues : ndarray
+            Lists "good" eigenvalues
+        evalues_low : ndarray
+            Lists eigenvalues from low resolution solver (i.e. the
+            resolution of the specified EVP)
+        evalues_high : ndarray
+            Lists eigenvalues from high resolution solver (i.e. factor
+            times specified EVP resolution)
+        pseudospectrum : ndarray
+            epsilon-pseudospectrum computed at specified points in the
+            complex plane
+        ps_real : ndarray
+            real coordinates for epsilon-pseudospectrum 
+        ps_imag : ndarray
+            imaginary coordinates for epsilon-pseudospectrum 
+
+        Notes
+        -----
+        See references for algorithms in individual method docstrings.
+
         """
         self.reject = reject
         self.factor = factor
@@ -29,6 +89,10 @@ class Eigenproblem():
         self.evalues = None
         self.evalues_low = None
         self.evalues_high = None
+        self.pseudospectrum = None
+        self.ps_real = None
+        self.ps_imag = None
+
         self.drift_threshold = drift_threshold
         self.use_ordinal = use_ordinal
         self.scales = scales
@@ -38,6 +102,13 @@ class Eigenproblem():
     def _set_parameters(self, parameters):
         """set the parameters in the underlying EVP object
 
+        Parameters
+	----------
+        parameters : dict
+            Dict of parameter names and values (keys and values
+            respectively) to set in EVP
+
+
         """
         for k,v in parameters.items():
             tools.update_EVP_params(self.EVP, k, v)
@@ -45,9 +116,33 @@ class Eigenproblem():
                 tools.update_EVP_params(self.EVP_hires, k, v)
 
     def grid(self):
+        """get grid points for eigenvectors.
+
+        """
         return self.EVP.domain.grids(scales=self.scales)[0]
 
     def solve(self, sparse=False, parameters=None, pencil=0, N=15, target=0, **kwargs):
+        """solve underlying eigenvalue problem.
+
+        Parameters
+        ----------
+        sparse : bool, optional
+            If true, use sparse solver, otherwise use dense solver
+            (default: False)
+        parameters : dict, optional
+            A dict giving parameter names and values to the EVP. If None,
+            use values specified at EVP construction time.  (default: None)
+        pencil : int, optional
+            The EVP pencil to be solved. (default: 0)
+        N : int, optional
+            The number of eigenvalues to find if using a sparse solver
+            (default: 15)
+        target : complex, optional
+            The target value to search for when using sparse solver
+            (default: 0+0j)
+        
+        
+        """
         if parameters:
             self._set_parameters(parameters)
         self.pencil = pencil
@@ -67,12 +162,36 @@ class Eigenproblem():
             self.evalues_index = np.arange(len(self.evalues),dtype=int)
 
     def _run_solver(self, solver, sparse):
+        """wrapper method to run solver.
+
+        Parameters
+        ----------
+        solver : dedalus.core.problems.EigenvalueProblem
+            The Dedalus EVP object containing the equations to be solved
+        sparse : bool
+            If True, use sparse solver; otherwise use dense.
+        """
         if sparse:
             solver.solve_sparse(solver.pencils[self.pencil], N=self.N, target=self.target, rebuild_coeffs=True, **self.solver_kwargs)
         else:
             solver.solve_dense(solver.pencils[self.pencil], rebuild_coeffs=True)
 
     def _set_eigenmode(self, index, all_modes=False):
+        """use EVP solver's set_state to access eigenmode in grid or coefficient space
+        
+        The index parameter is either the index of the ordered good
+        eigenvalues or the direct index of the low-resolution EVP depending
+        on the all_modes option.
+
+        Parameters
+        ----------
+        index : int
+            index of eigenvalue corresponding to desired eigenvector
+        all_modes : bool, optional
+            If True, index specifies the unsorted index of the
+            low-resolution EVP; otherwise it is the index corresponding to
+            the self.evalues order (default: False)
+        """
         if all_modes:
             good_index = index
         else:
@@ -80,8 +199,21 @@ class Eigenproblem():
         self.solver.set_state(good_index)
 
     def eigenmode(self, index, scales=None, all_modes=False):
-        """Returns Dedalus FieldSystem object containing the eigenmode given by index
+        """Returns Dedalus FieldSystem object containing the eigenmode
+        given by index.
 
+
+        Parameters
+        ----------
+        index : int
+            index of eigenvalue corresponding to desired eigenvector
+        scales : float
+            A multiple for setting the grid resolution. If not None, will
+            overwrite self.scales.  (default: None)
+        all_modes : bool, optional
+            If True, index specifies the unsorted index of the
+            low-resolution EVP; otherwise it is the index corresponding to
+            the self.evalues order (default: False)
         """
         self._set_eigenmode(index, all_modes=all_modes)
         if scales is not None:
@@ -92,11 +224,17 @@ class Eigenproblem():
         return self.solver.state
         
     def growth_rate(self, parameters=None, **kwargs):
-        """returns the growth rate, defined as the eigenvalue with the largest
-        real part. May acually be a decay rate if there is no growing mode.
+        """returns the maximum growth rate, defined by self.grow_func(),
+        the index of the maximal mode, and the frequency of that mode. If
+        there is no growing mode, returns the slowest decay rate.
         
-        also returns the index of the fastest growing mode.  If there are no
-        good eigenvalue, returns nan, nan, nan.
+        also returns the index of the fastest growing mode.  If there are
+        no good eigenvalues, returns np.nan for all three quantities.
+
+        Returns
+        -------
+        growth_rate, index, freqency : tuple of ints
+        
         """
         try:
             self.solve(parameters=parameters, **kwargs)
@@ -114,6 +252,36 @@ class Eigenproblem():
             return np.nan, np.nan, np.nan
 
     def plot_mode(self, index, fig_height=8, norm_var=None, scales=None, all_modes=False):
+        """plots eigenvector corresponding to specified index.
+
+        By default, the plot will show the real and complex parts of the
+        unnormalized components of the eigenmode. If a norm_var is
+        specified, all components will be scaled such that variable chosen
+        is purely real and has unit amplitude.
+
+        Parameters
+        ----------
+        index : int
+            index of eigenvalue corresponding to desired eigenvector
+        fig_height : float, optional
+            Height of constructed figure (default: 8)
+        norm_var : str
+            If not None, selects the field in the eigenmode with which to
+            normalize. Otherwise, plots the unnormalized
+            eigenmode. (default: None)
+        scales : float
+            A multiple for setting the grid resolution. If not None, will
+            overwrite self.scales.  (default: None)
+        all_modes : bool, optional
+            If True, index specifies the unsorted index of the
+            low-resolution EVP; otherwise it is the index corresponding to
+            the self.evalues order (default: False)
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+
+        """
         state = self.eigenmode(index, scales=scales, all_modes=all_modes)
 
         z = self.grid()
@@ -141,13 +309,21 @@ class Eigenproblem():
         return fig
 
     def project_mode(self, index, domain, transverse_modes, all_modes=False):
-        """projects a mode specified by index onto a domain 
+        """projects a mode specified by index onto a domain of higher
+        dimension.
 
         Parameters
         ----------
-        index : an integer giving the eigenmode to project
-        domain : a domain to project onto
-        transverse_modes : a tuple of mode numbers for the transverse directions
+        index : 
+            an integer giving the eigenmode to project
+        domain : 
+            a domain to project onto
+        transverse_modes : 
+            a tuple of mode numbers for the transverse directions
+
+        Returns
+        -------
+           dedalus.core.system.FieldSystem
         """
         
         if len(transverse_modes) != (len(domain.bases) - 1):
@@ -167,6 +343,18 @@ class Eigenproblem():
         return field_system
     
     def write_global_domain(self, field_system, base_name="IVP_output"):
+        """Given a field system, writes a Dedalus HDF5 file.
+
+        Typically, one would use this to write a field system constructed by project_mode. 
+
+        Parameters
+        ----------
+        field_system : dedalus.core.system.FieldSystem
+            A field system containing the data to be written
+        base_name : str, optional
+            The base filename of the resulting HDF5 file. (default: IVP_output)
+
+        """
         output_evaluator = Evaluator(field_system.domain, self.EVP.namespace)
         output_handler = output_evaluator.add_file_handler(base_name)
         output_handler.add_system(field_system)
@@ -178,12 +366,13 @@ class Eigenproblem():
     def calc_ps(self, k, zgrid, mu=0., pencil=0, inner_product=None, norm=-2, maxiter=10, rtol=1e-3):
         """computes epsilon-pseudospectrum for the eigenproblem.
 
-        Uses the algorithm described in section 5 of 
+        Uses the algorithm described in section 5 of
 
-        Embree & Keeler (2017). SIAM J. Matrix Anal. Appl. 38, 3: 1028-1054.
+        Embree & Keeler (2017). SIAM J. Matrix Anal. Appl. 38, 3:
+        1028-1054.
 
-        to enable the approximation of epsilon-pseudospectra for arbitrary differential-algebraic 
-        equation systems.
+        to enable the approximation of epsilon-pseudospectra for arbitrary
+        differential-algebraic equation systems.
 
 
         Parameters:
@@ -197,7 +386,8 @@ class Eigenproblem():
         pencil : int
             pencil holding EVP
         inner_product : function
-            a function that takes two field systems and computes their inner product 
+            a function that takes two field systems and computes their
+            inner product
         """
 
         self.solve(sparse=True, N=k, pencil=pencil) # O(N k)?
@@ -239,7 +429,13 @@ class Eigenproblem():
         Q : ndarray
             Matrix of eigenvectors
         inner_product : function
-            a function that takes two field systems and computes their inner product 
+            a function that takes two field systems and computes their
+            inner product
+
+        Returns
+        -------
+        ndarray
+        
         """
         k = Q.shape[1]
         M = np.zeros((k,k), dtype=np.complex128)
@@ -271,6 +467,16 @@ class Eigenproblem():
         system.scatter()
 
     def _copy_system(self, state):
+        """copies a field system.
+        
+        Parameters
+        ----------
+        state : dedalus.core.system.FieldSystem
+        
+        Returns
+        -------
+        dedalus.core.system.FieldSystem
+        """
         fields = []
         for f in state.fields:
             field = f.copy()
@@ -280,19 +486,22 @@ class Eigenproblem():
         return FieldSystem(fields)
 
     def _pseudo(self, L, zgrid, maxiter=10, rtol=1e-3):
-        """computes epsilon-pseudospectrum for a regular eigenvalue problem.
+        """computes epsilon-pseudospectrum for a regular eigenvalue
+        problem.
 
-        If maxiter is zero, uses a direct algorithm:
-        at point z in the complex plane, the resolvant R is calculated 
+        If maxiter is zero, uses a direct algorithm: at point z in the
+        complex plane, the resolvant R is calculated
 
-        R = ||z*I - L||_{-2} 
+        R = ||z*I - L||_{-2}
 
         finding the maximum singular value.
         
-        If maxiter is not zero, uses the iterative algorithm from figure 39.3 (p.375) of
+        If maxiter is not zero, uses the iterative algorithm from figure
+        39.3 (p.375) of
 
-        Trefethen & Embree, "Spectra and Pseudospectra: The Behavior of Nonnormal Matrices and Operators" 
-        (2005, Princeton University Press) 
+        Trefethen & Embree, "Spectra and Pseudospectra: The Behavior of
+        Nonnormal Matrices and Operators" (2005, Princeton University
+        Press)
         
         Parameters
         ----------
@@ -300,6 +509,10 @@ class Eigenproblem():
             the matrix to be analyzed
         zgrid : tuple
             (real, imag) points
+
+        Returns
+        -------
+        ndarray
         """
         xx = zgrid[0]
         yy = zgrid[1]
@@ -347,22 +560,23 @@ class Eigenproblem():
     def spectrum(self, figtitle='eigenvalue', spectype='good', xlog=True, ylog=True, real_label="real", imag_label="imag"):
         """Plots the spectrum.
 
-        The spectrum plots real parts on the x axis and imaginary parts on the y axis.
+        The spectrum plots real parts on the x axis and imaginary parts on
+        the y axis.
 
         Parameters
         ----------
         figtitle : str, optional
-                   string to be used in output filename.
+            string to be used in output filename.
         spectype : {'good', 'low', 'high'}, optional
-                   specifies whether to use good, low, or high eigenvalues
+            specifies whether to use good, low, or high eigenvalues
         xlog : bool, optional
-               Use symlog on x axis
+            Use symlog on x axis
         ylog : bool, optional
-               Use symlog on y axis
+            Use symlog on y axis
         real_label : str, optional
-                     Label to be applied to the real axis
+            Label to be applied to the real axis
         imag_label : str, optional
-                     Label to be applied to the imaginary axis
+            Label to be applied to the imaginary axis
         """
         if spectype == 'low':
             ev = self.evalues_low
@@ -390,13 +604,19 @@ class Eigenproblem():
         return fig
 
     def _reject_spurious(self):
-        """may be able to pull everything out of EVP to construct a new one with higher N..."""
+        """perform eigenvalue rejection
+
+        """
         evg, indx = self._discard_spurious_eigenvalues()
         self.evalues_good = evg
         self.evalues_index = indx
         self.evalues = self.evalues_good
 
     def _build_hires(self):
+        """builds a high-resolution EVP from the EVP passed in at
+        construction
+
+        """
         old_evp = self.EVP
         old_x = old_evp.domain.bases[0]
 
@@ -430,9 +650,9 @@ class Eigenproblem():
         self.hires_solver = self.EVP_hires.build_solver()
         
     def _discard_spurious_eigenvalues(self):
-        """
-        Solves the linear eigenvalue problem for two different resolutions.
-        Returns trustworthy eigenvalues using nearest delta, from Boyd chapter 7.
+        """ Solves the linear eigenvalue problem for two different
+        resolutions.  Returns trustworthy eigenvalues using nearest delta,
+        from Boyd chapter 7.
         """
         eval_low = self.evalues_low
         eval_hi = self.evalues_high
@@ -485,7 +705,12 @@ class Eigenproblem():
     def plot_drift_ratios(self):
         """Plot drift ratios (both ordinal and nearest) vs. mode number.
 
-        The drift ratios give a measure of how good a given eigenmode is; this can help set thresholds.
+        The drift ratios give a measure of how good a given eigenmode is;
+        this can help set thresholds.
+
+        Returns
+        -------
+        matplotlib.figure.Figure        
 
         """
         if self.reject is False:
