@@ -38,7 +38,7 @@ class CriticalFinder:
 
         self.roots = None
 
-    def grid_generator(self, points, sparse=False, interpolate_sparse=False):
+    def grid_generator(self, points, sparse=False):
         """
         Generates a 2-dimensional grid over the specified parameter
         space of an eigenvalue problem.  
