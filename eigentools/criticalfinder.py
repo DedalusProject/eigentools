@@ -208,7 +208,7 @@ class CriticalFinder:
             logger.warning('Optimize results not fully converged, returning crit_finder results.')
             return guess
 
-    def plot_crit(self, title='growth_rates', transpose=False, xlabel = "", ylabel = "", zlabel="growth rate", cmap="viridis"):
+    def plot_crit(self, title='growth_rates', transpose=False, xlabel = None, ylabel = None, zlabel="growth rate", cmap="viridis"):
         """Create a 2D colormap of the grid of growth rates.  If available, the
             root values that have been found will be plotted over the colormap
 
@@ -239,23 +239,28 @@ class CriticalFinder:
         plt.pcolormesh(xx,yy,grid,cmap=cmap,vmin=-biggest_val,vmax=biggest_val)
         plt.colorbar(label=zlabel)
 
-        # Grab root data if they're available, plot them.
-        if transpose:
-            x = self.parameter_grids[1][0,:]
-            y = self.roots[:]
-        else:   
-            x = self.roots[:]
-            y = self.parameter_grids[1][0,:]
-            
-        if transpose:
-            y, x = y[np.isfinite(y)], x[np.isfinite(y)]
-        else:
-            y, x = y[np.isfinite(x)], x[np.isfinite(x)]
-        plt.scatter(x,y)
+        # Plot root data if they're available
+        if self.roots is not None:
+            if transpose:
+                x = self.parameter_grids[1][0,:]
+                y = self.roots[:]
+            else:   
+                x = self.roots[:]
+                y = self.parameter_grids[1][0,:]
 
+            if transpose:
+                y, x = y[np.isfinite(y)], x[np.isfinite(y)]
+            else:
+                y, x = y[np.isfinite(x)], x[np.isfinite(x)]
+            plt.scatter(x,y, color='k')
+        
         # Pretty up the plot, save.
         plt.ylim(yy.min(),yy.max())
         plt.xlim(xx.min(),xx.max())
+        if xlabel is None:
+            xlabel = self.param_names[0]
+        if ylabel is None:
+            ylabel = self.param_names[1]
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         plt.tight_layout()
