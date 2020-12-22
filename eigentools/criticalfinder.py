@@ -25,8 +25,8 @@ class CriticalFinder:
         parameters
     param_names : tuple of str
         The names of parameters to search over
-    comm : mpi4py.MPI.Intracomm
-        The MPI comm group to share jobs across
+    comm : mpi4py.MPI.Intracomm, optional
+        The MPI comm group to share jobs across (default: MPI.COMM_WORLD)
     find_freq : bool, optional
         If True, also find frequency at critical point
 
@@ -41,7 +41,7 @@ class CriticalFinder:
         Array of roots along axis 1 of parameter_grid
     """
     
-    def __init__(self, eigenproblem, param_names, comm, find_freq=False):
+    def __init__(self, eigenproblem, param_names, comm=MPI.COMM_WORLD, find_freq=False):
         self.eigenproblem = eigenproblem
         self.param_names = param_names
         self.comm = comm
