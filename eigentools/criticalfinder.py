@@ -309,16 +309,16 @@ class CriticalFinder:
         # Plot root data if they're available
         if self.roots is not None:
             if transpose:
-                x = self.parameter_grids[1][0,:]
-                y = self.roots[:]
-            else:   
                 x = self.roots[:]
-                y = self.parameter_grids[1][0,:]
+                y = self.parameter_grids[0][0,:]
+            else:
+                x = self.parameter_grids[0][0,:]
+                y = self.roots[:]
 
             if transpose:
-                y, x = y[np.isfinite(y)], x[np.isfinite(y)]
-            else:
                 y, x = y[np.isfinite(x)], x[np.isfinite(x)]
+            else:
+                y, x = y[np.isfinite(y)], x[np.isfinite(y)]
             plt.scatter(x,y, color='k')
         
         # Pretty up the plot, save.
