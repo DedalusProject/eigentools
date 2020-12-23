@@ -10,13 +10,18 @@ from eigentools import Eigenproblem, CriticalFinder
 import time
 import dedalus.public as de
 import numpy as np
+import sys
+import logging
+
+logger = logging.getLogger(__name__.split('.')[-1])
+
 
 comm = MPI.COMM_WORLD
 
 
 no_slip = False
 stress_free = True
-file_name = 'rayleigh_benard_growth_rates'
+file_name = sys.argv[0].strip('.py')
 if no_slip:
     file_name += '_no_slip'
 elif stress_free:
@@ -65,47 +70,45 @@ elif stress_free:
     rayleigh_benard.add_bc('right(uz) = 0')
 
 # create an Eigenproblem object
-EP = Eigenproblem(rayleigh_benard, sparse=True)
+EP = Eigenproblem(rayleigh_benard)
 
-# create a shim function to translate (x, y) to the parameters for the eigenvalue problem:
-def shim(x,y):
-    gr, indx, freq = EP.growth_rate({"Ra":x,"k":y})
-    ret = gr+1j*freq
-    if type(ret) == np.ndarray:
-        return ret[0]
-    else:
-        return ret
-
-cf = CriticalFinder(shim, comm)
+cf = CriticalFinder(EP, ("k","Ra"), comm, find_freq = True)
 
 # generating the grid is the longest part
 start = time.time()
 if no_slip:
-    mins = np.array((1000, 2))
-    maxs = np.array((3000, 4))
+    nx = 20
+    ny = 20
+    xpoints = np.linspace(2, 4, ny)
+    ypoints = np.linspace(1000, 3000, nx)
 elif stress_free:
     #657.5, 2.221
-    mins = np.array((400, 1.6))
-    maxs = np.array((1000, 3))
-nums = np.array((20, 20))
+    nx = 10
+    ny = 10
+    xpoints = np.linspace(2, 2.4, ny)
+    ypoints = np.linspace(550, 700, nx)
+
 try:
     cf.load_grid('{}.h5'.format(file_name))
 except:
-    cf.grid_generator(mins, maxs, nums)
-    if comm.rank == 0:
-        cf.save_grid(file_name)
+    cf.grid_generator((xpoints, ypoints), sparse=True)
+    cf.save_grid(file_name)
 
 end = time.time()
 if comm.rank == 0:
-    print("grid generation time: {:10.5f} sec".format(end-start))
+    logger.info("grid generation time: {:10.5f} sec".format(end-start))
 
-cf.root_finder()
-crit = cf.crit_finder(find_freq = True)
+logger.info("Beginning critical finding with root polishing...")
+begin = time.time()
+crit = cf.crit_finder(polish_roots=True, tol=1e-5)
+end = time.time()
+logger.info("critical finding/root polishing time: {:10.5f} sec".format(end-start))
 
 if comm.rank == 0:
     print("crit = {}".format(crit))
-    print("critical wavenumber k = {:10.5f}".format(crit[1]))
-    print("critical Ra = {:10.5f}".format(crit[0]))
+    print("critical wavenumber k = {:10.5f}".format(crit[0]))
+    print("critical Ra = {:10.5f}".format(crit[1]))
     print("critical freq = {:10.5f}".format(crit[2]))
 
-    cf.plot_crit(title=file_name, transpose=True, xlabel='kx', ylabel='Ra')
+    fig = cf.plot_crit(xlabel=r'$k_x$', ylabel=r'$\mathrm{Ra}$')
+    fig.savefig("rayleigh_benard_2d_growth_rates.png",dpi=300)

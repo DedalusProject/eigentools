@@ -1,154 +1,626 @@
 from dedalus.tools.cache import CachedAttribute
+import logging
 from dedalus.core.field import Field
+from dedalus.core.evaluator import Evaluator
+from dedalus.core.system import FieldSystem
+from dedalus.tools.post import merge_process_files
 import dedalus.public as de
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d
 import scipy.sparse.linalg
+from . import tools
+
+logger = logging.getLogger(__name__.split('.')[-1])
 
 class Eigenproblem():
-    def __init__(self, EVP, sparse=False):
+    def __init__(self, EVP, reject=True, factor=1.5, scales=1, drift_threshold=1e6, use_ordinal=False, grow_func=lambda x: x.real, freq_func=lambda x: x.imag):
+        """An object for feature-rich eigenvalue analysis.
+
+        Eigenproblem provides support for common tasks in eigenvalue
+        analysis. Dedalus EVP objects compute raw eigenvalues and
+        eigenvectors for a given problem; Eigenproblem provides support for
+        numerous common tasks required for scientific use of those
+        solutions. This includes rejection of inaccurate eigenvalues and
+        analysis of those rejection criteria, plotting of eigenmodes and
+        spectra, and projection of 1-D eigenvectors onto 2- or 3-D domains
+        for use as initial conditions in subsequent initial value problems.
+
+        Additionally, Eigenproblems can compute epsilon-pseudospectra for
+        arbitrary Dedalus differential-algebraic equations.
+        
+
+        Parameters
+        ----------
+        EVP : dedalus.core.problems.EigenvalueProblem
+            The Dedalus EVP object containing the equations to be solved
+        reject : bool, optional
+            whether or not to reject spurious eigenvalues (default: True)
+        factor : float, optional
+            The factor by which to multiply the resolution. 
+            NB: this must be a rational number such that factor times the
+            resolution of EVP is an integer. (default: 1.5)
+        scales : float, optional
+            A multiple for setting the grid resolution.  (default: 1)
+        drift_threshold : float, optional
+            Inverse drift ratio threshold for keeping eigenvalues during
+            rejection (default: 1e6)
+        use_ordinal : bool, optional
+            If true, use ordinal method from Boyd (1989); otherwise use
+            nearest (default: False)
+        grow_func : func
+            A function that takes a complex input and returns the growth
+            rate as defined by the EVP (default: uses real part)
+        freq_func : func
+            A function that takes a complex input and returns the frequency
+            as defined by the EVP (default: uses imaginary part)
+
+        Attributes
+        ----------
+        evalues : ndarray
+            Lists "good" eigenvalues
+        evalues_low : ndarray
+            Lists eigenvalues from low resolution solver (i.e. the
+            resolution of the specified EVP)
+        evalues_high : ndarray
+            Lists eigenvalues from high resolution solver (i.e. factor
+            times specified EVP resolution)
+        pseudospectrum : ndarray
+            epsilon-pseudospectrum computed at specified points in the
+            complex plane
+        ps_real : ndarray
+            real coordinates for epsilon-pseudospectrum 
+        ps_imag : ndarray
+            imaginary coordinates for epsilon-pseudospectrum 
+
+        Notes
+        -----
+        See references for algorithms in individual method docstrings.
+
         """
-        EVP is dedalus EVP object
-        """
+        self.reject = reject
+        self.factor = factor
         self.EVP = EVP
         self.solver = EVP.build_solver()
-        self.sparse = sparse
+        if self.reject:
+            self._build_hires()
+
+        self.grid_name = self.EVP.domain.bases[0].name
+        self.evalues = None
+        self.evalues_low = None
+        self.evalues_high = None
+        self.pseudospectrum = None
+        self.ps_real = None
+        self.ps_imag = None
+
+        self.drift_threshold = drift_threshold
+        self.use_ordinal = use_ordinal
+        self.scales = scales
+        self.grow_func = grow_func
+        self.freq_func = freq_func
+
+    def _set_parameters(self, parameters):
+        """set the parameters in the underlying EVP object
+
+        Parameters
+	----------
+        parameters : dict
+            Dict of parameter names and values (keys and values
+            respectively) to set in EVP
+
+
+        """
+        for k,v in parameters.items():
+            tools.update_EVP_params(self.EVP, k, v)
+            if self.reject:
+                tools.update_EVP_params(self.EVP_hires, k, v)
+
+    def grid(self):
+        """get grid points for eigenvectors.
+
+        """
+        return self.EVP.domain.grids(scales=self.scales)[0]
+
+    def solve(self, sparse=False, parameters=None, pencil=0, N=15, target=0, **kwargs):
+        """solve underlying eigenvalue problem.
+
+        Parameters
+        ----------
+        sparse : bool, optional
+            If true, use sparse solver, otherwise use dense solver
+            (default: False)
+        parameters : dict, optional
+            A dict giving parameter names and values to the EVP. If None,
+            use values specified at EVP construction time.  (default: None)
+        pencil : int, optional
+            The EVP pencil to be solved. (default: 0)
+        N : int, optional
+            The number of eigenvalues to find if using a sparse solver
+            (default: 15)
+        target : complex, optional
+            The target value to search for when using sparse solver
+            (default: 0+0j)
         
-    def solve(self, pencil=0, N=15, target=0):
+        
+        """
+        if parameters:
+            self._set_parameters(parameters)
         self.pencil = pencil
         self.N = N
         self.target = target
+        self.solver_kwargs = kwargs
 
-        if self.sparse:
-            self.solver.solve_sparse(self.solver.pencils[self.pencil], N=self.N, target=self.target, rebuild_coeffs=True)
+        self._run_solver(self.solver, sparse)
+        self.evalues_low = self.solver.eigenvalues
+
+        if self.reject:
+            self._run_solver(self.hires_solver, sparse)
+            self.evalues_high = self.hires_solver.eigenvalues
+            self._reject_spurious()
         else:
-            self.solver.solve_dense(self.solver.pencils[self.pencil], rebuild_coeffs=True)
-        self.evalues = self.solver.eigenvalues
-            
-    def process_evalues(self, ev):
-        return ev[np.isfinite(ev)]
-    
-    def growth_rate(self,params,reject=True, tol=1e-10, **kwargs):
-        """returns the growth rate, defined as the eigenvalue with the largest
-        real part. May acually be a decay rate if there is no growing mode.
-        
-        also returns the index of the fastest growing mode.  If there are no
-        good eigenvalue, returns nan, nan, nan.
+            self.evalues = self.evalues_lowres
+            self.evalues_index = np.arange(len(self.evalues),dtype=int)
+
+    def _run_solver(self, solver, sparse):
+        """wrapper method to run solver.
+
+        Parameters
+        ----------
+        solver : dedalus.core.problems.EigenvalueProblem
+            The Dedalus EVP object containing the equations to be solved
+        sparse : bool
+            If True, use sparse solver; otherwise use dense.
         """
-        for k,v in params.items():
-            # Dedalus workaround: must change values in two places
-            vv = self.EVP.namespace[k]
-            vv.value = v
-            self.EVP.parameters[k] = v
+        if sparse:
+            solver.solve_sparse(solver.pencils[self.pencil], N=self.N, target=self.target, rebuild_coeffs=True, **self.solver_kwargs)
+        else:
+            solver.solve_dense(solver.pencils[self.pencil], rebuild_coeffs=True)
+
+    def _set_eigenmode(self, index, all_modes=False):
+        """use EVP solver's set_state to access eigenmode in grid or coefficient space
+        
+        The index parameter is either the index of the ordered good
+        eigenvalues or the direct index of the low-resolution EVP depending
+        on the all_modes option.
+
+        Parameters
+        ----------
+        index : int
+            index of eigenvalue corresponding to desired eigenvector
+        all_modes : bool, optional
+            If True, index specifies the unsorted index of the
+            low-resolution EVP; otherwise it is the index corresponding to
+            the self.evalues order (default: False)
+        """
+        if all_modes:
+            good_index = index
+        else:
+            good_index = self.evalues_index[index]
+        self.solver.set_state(good_index)
+
+    def eigenmode(self, index, scales=None, all_modes=False):
+        """Returns Dedalus FieldSystem object containing the eigenmode
+        given by index.
+
+
+        Parameters
+        ----------
+        index : int
+            index of eigenvalue corresponding to desired eigenvector
+        scales : float
+            A multiple for setting the grid resolution. If not None, will
+            overwrite self.scales.  (default: None)
+        all_modes : bool, optional
+            If True, index specifies the unsorted index of the
+            low-resolution EVP; otherwise it is the index corresponding to
+            the self.evalues order (default: False)
+        """
+        self._set_eigenmode(index, all_modes=all_modes)
+        if scales is not None:
+            self.scales = scales
+        for f in self.solver.state.fields:
+            f.set_scales(self.scales,keep_data=True)
+
+        return self.solver.state
+        
+    def growth_rate(self, parameters=None, **kwargs):
+        """returns the maximum growth rate, defined by self.grow_func(),
+        the index of the maximal mode, and the frequency of that mode. If
+        there is no growing mode, returns the slowest decay rate.
+        
+        also returns the index of the fastest growing mode.  If there are
+        no good eigenvalues, returns np.nan for all three quantities.
+
+        Returns
+        -------
+        growth_rate, index, freqency : tuple of ints
+        
+        """
         try:
-            self.solve(**kwargs)
-            if reject:
-                self.reject_spurious()
-                gr_rate = np.max(self.evalues_good.real)
-                gr_indx = self.evalues_good_index[self.evalues_good.real == gr_rate]
-                freq = self.evalues_good[self.evalues_good.real == gr_rate].imag
-            else:
-                gr_rate = np.max(self.evalues.real)
-                gr_indx = np.where(self.evalues.real == gr_rate)[0]
-                freq = self.evalues[gr_indx[0]].imag
+            self.solve(parameters=parameters, **kwargs)
+            gr_rate = np.max(self.grow_func(self.evalues))
+            gr_indx = np.where(self.grow_func(self.evalues) == gr_rate)[0]
+            freq = self.freq_func(self.evalues[gr_indx[0]])
 
             return gr_rate, gr_indx[0], freq
 
         except np.linalg.linalg.LinAlgError:
-            print("Eigenvalue solver failed to converge for parameters {}".format(params))
+            logger.warning("Dense eigenvalue solver failed for parameters {}".format(params))
             return np.nan, np.nan, np.nan
         except (scipy.sparse.linalg.eigen.arpack.ArpackNoConvergence, scipy.sparse.linalg.eigen.arpack.ArpackError):
-            print("Sparse eigenvalue solver failed to converge for parameters {}".format(params))
+            logger.warning("Sparse eigenvalue solver failed to converge for parameters {}".format(params))
             return np.nan, np.nan, np.nan
-            
 
-    def spectrum(self, title='eigenvalue',spectype='raw'):
-        if spectype == 'raw':
-            ev = self.evalues
-        elif spectype == 'hires':
-            ev = self.evalues_hires
+    def plot_mode(self, index, fig_height=8, norm_var=None, scales=None, all_modes=False):
+        """plots eigenvector corresponding to specified index.
+
+        By default, the plot will show the real and complex parts of the
+        unnormalized components of the eigenmode. If a norm_var is
+        specified, all components will be scaled such that variable chosen
+        is purely real and has unit amplitude.
+
+        Parameters
+        ----------
+        index : int
+            index of eigenvalue corresponding to desired eigenvector
+        fig_height : float, optional
+            Height of constructed figure (default: 8)
+        norm_var : str
+            If not None, selects the field in the eigenmode with which to
+            normalize. Otherwise, plots the unnormalized
+            eigenmode. (default: None)
+        scales : float
+            A multiple for setting the grid resolution. If not None, will
+            overwrite self.scales.  (default: None)
+        all_modes : bool, optional
+            If True, index specifies the unsorted index of the
+            low-resolution EVP; otherwise it is the index corresponding to
+            the self.evalues order (default: False)
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+
+        """
+        state = self.eigenmode(index, scales=scales, all_modes=all_modes)
+
+        z = self.grid()
+        nrow = 2
+        nvars = len(self.EVP.variables)
+        ncol = int(np.ceil(nvars/nrow))
+
+        if norm_var:
+            rotation = self.solver.state[norm_var]['g'].conj()
+        else:
+            rotation = 1.
+
+        fig = plt.figure(figsize=[fig_height*ncol/nrow,fig_height])
+        for i,v in enumerate(self.EVP.variables):
+            ax  = fig.add_subplot(nrow,ncol,i+1)
+            ax.plot(z, (rotation*state[v]['g']).real, label='real')
+            ax.plot(z, (rotation*state[v]['g']).imag, label='imag')
+            ax.set_xlabel(self.grid_name, fontsize=15)
+            ax.set_ylabel(v, fontsize=15)
+            if i == 0:
+                ax.legend(fontsize=15)
+                
+        fig.tight_layout()
+
+        return fig
+
+    def project_mode(self, index, domain, transverse_modes, all_modes=False):
+        """projects a mode specified by index onto a domain of higher
+        dimension.
+
+        Parameters
+        ----------
+        index : 
+            an integer giving the eigenmode to project
+        domain : 
+            a domain to project onto
+        transverse_modes : 
+            a tuple of mode numbers for the transverse directions
+
+        Returns
+        -------
+           dedalus.core.system.FieldSystem
+        """
+        
+        if len(transverse_modes) != (len(domain.bases) - 1):
+            raise ValueError("Must specify {} transverse modes for a domain with {} bases; {} specified".format(len(domain.bases)-1, len(domain.bases), len(transverse_modes)))
+
+        field_slice = tuple(i for i in [transverse_modes, slice(None)])
+
+        self._set_eigenmode(index, all_modes=all_modes)
+
+        fields = []
+        
+        for v in self.EVP.variables:
+            fields.append(domain.new_field(name=v))
+            fields[-1]['c'][field_slice] = self.solver.state[v]['c']
+        field_system = FieldSystem(fields)
+
+        return field_system
+    
+    def write_global_domain(self, field_system, base_name="IVP_output"):
+        """Given a field system, writes a Dedalus HDF5 file.
+
+        Typically, one would use this to write a field system constructed by project_mode. 
+
+        Parameters
+        ----------
+        field_system : dedalus.core.system.FieldSystem
+            A field system containing the data to be written
+        base_name : str, optional
+            The base filename of the resulting HDF5 file. (default: IVP_output)
+
+        """
+        output_evaluator = Evaluator(field_system.domain, self.EVP.namespace)
+        output_handler = output_evaluator.add_file_handler(base_name)
+        output_handler.add_system(field_system)
+
+        output_evaluator.evaluate_handlers(output_evaluator.handlers, timestep=0,sim_time=0, world_time=0, wall_time=0, iteration=0)
+
+        merge_process_files(base_name, cleanup=True)
+
+    def calc_ps(self, k, zgrid, mu=0., pencil=0, inner_product=None, norm=-2, maxiter=10, rtol=1e-3):
+        """computes epsilon-pseudospectrum for the eigenproblem.
+
+        Uses the algorithm described in section 5 of
+
+        Embree & Keeler (2017). SIAM J. Matrix Anal. Appl. 38, 3:
+        1028-1054.
+
+        to enable the approximation of epsilon-pseudospectra for arbitrary
+        differential-algebraic equation systems.
+
+
+        Parameters:
+        -----------
+        k    : int
+            number of eigenmodes in invariant subspace
+        zgrid : tuple
+            (real, imag) points
+        mu : complex
+            center point for pseudospectrum. 
+        pencil : int
+            pencil holding EVP
+        inner_product : function
+            a function that takes two field systems and computes their
+            inner product
+        """
+
+        self.solve(sparse=True, N=k, pencil=pencil) # O(N k)?
+        pre_right = self.solver.pencils[pencil].pre_right
+        pre_right_LU = scipy.sparse.linalg.splu(pre_right.tocsc()) # O(N)
+        V = pre_right_LU.solve(self.solver.eigenvectors) # O(N k)
+
+        # Orthogonalize invariant subspace
+        Q, R = np.linalg.qr(V) # O(N k^2)
+
+        # Compute approximate Schur factor
+        E = -(self.solver.pencils[pencil].M_exp)
+        A = (self.solver.pencils[pencil].L_exp)
+        A_mu_E = A - mu*E
+        A_mu_E_LU = scipy.sparse.linalg.splu(A_mu_E.tocsc()) # O(N)
+        Ghat = Q.conj().T @ A_mu_E_LU.solve(E @ Q) # O(N k^2)
+
+        # Invert-shift Schur factor
+        I = np.identity(k)
+        if inner_product is not None:
+            M = self.compute_mass_matrix(pre_right@Q, inner_product)
+            Z, S = np.linalg.qr(scipy.linalg.cholesky(M))
+            Gmu = S@np.linalg.inv(S@Ghat) + mu*I
+        else:
+            logger.warning("No inner product given. Using 2-norm of state vector coefficients. This is probably not physically meaningful, especially if you are using Chebyshev polynomials.")
+            Gmu = np.linalg.inv(Ghat) + mu*I # O(k^3)
+
+        self.pseudospectrum = self._pseudo(Gmu, zgrid, maxiter=maxiter, rtol=rtol)
+        self.ps_real = zgrid[0]
+        self.ps_imag = zgrid[1]
+
+    def compute_mass_matrix(self, Q, inner_product):
+        """Compute the mass matrix M using a given inner product
+
+        M must be hermitian, so we compute only half the inner products.
+
+        Parameters
+        ----------
+        Q : ndarray
+            Matrix of eigenvectors
+        inner_product : function
+            a function that takes two field systems and computes their
+            inner product
+
+        Returns
+        -------
+        ndarray
+        
+        """
+        k = Q.shape[1]
+        M = np.zeros((k,k), dtype=np.complex128)
+        Xj = self._copy_system(self.solver.state)
+        Xi = self._copy_system(self.solver.state)
+
+        for j in range(k):
+            self.set_state(Xj, Q[:,j])
+            for i in range(j,k): # M must be hermitian
+                self.set_state(Xi, Q[:,i])
+                M[j,i] = inner_product(Xj, Xi)
+                M[i,j] = M[j,i].conj()
+
+        return M
+
+    def set_state(self, system, evector):
+        """
+        Set system to given evector
+
+        Parameters
+        ----------
+        system : FieldSystem
+            system to fill in
+        evector : ndarray
+            eigenvector
+        """
+        system.data[:] = 0
+        system.set_pencil(self.solver.eigenvalue_pencil, evector)
+        system.scatter()
+
+    def _copy_system(self, state):
+        """copies a field system.
+        
+        Parameters
+        ----------
+        state : dedalus.core.system.FieldSystem
+        
+        Returns
+        -------
+        dedalus.core.system.FieldSystem
+        """
+        fields = []
+        for f in state.fields:
+            field = f.copy()
+            field.name = f.name
+            fields.append(field)
+            
+        return FieldSystem(fields)
+
+    def _pseudo(self, L, zgrid, maxiter=10, rtol=1e-3):
+        """computes epsilon-pseudospectrum for a regular eigenvalue
+        problem.
+
+        If maxiter is zero, uses a direct algorithm: at point z in the
+        complex plane, the resolvant R is calculated
+
+        R = ||z*I - L||_{-2}
+
+        finding the maximum singular value.
+        
+        If maxiter is not zero, uses the iterative algorithm from figure
+        39.3 (p.375) of
+
+        Trefethen & Embree, "Spectra and Pseudospectra: The Behavior of
+        Nonnormal Matrices and Operators" (2005, Princeton University
+        Press)
+        
+        Parameters
+        ----------
+        L : square 2D ndarray
+            the matrix to be analyzed
+        zgrid : tuple
+            (real, imag) points
+
+        Returns
+        -------
+        ndarray
+        """
+        xx = zgrid[0]
+        yy = zgrid[1]
+        R = np.zeros((len(xx), len(yy)))
+        matsize = L.shape[0]
+        T, Z = scipy.linalg.schur(L, output='complex')
+        if maxiter == 0:
+            logger.debug("Using direct solver for calculating pseudospectrum")
+        else:
+            logger.debug("Using iterative solver for calculating pseudospectrum")
+        for j, y in enumerate(yy):
+            for i, x in enumerate(xx):
+                z = (x + 1j*y)
+                # if _maxiter is set to zero
+                if maxiter == 0:
+                    R[j,i] = np.linalg.norm((z*np.eye(matsize) - L), ord=-2)
+                else:
+                    T1 = z*np.eye(matsize) - T
+                    T2 = T1.conj().T
+                    sigold = 0
+                    qold = np.zeros(matsize,dtype=np.complex128)
+                    beta = 0
+
+                    q = np.random.randn(matsize)+1j*np.random.randn(matsize)
+                    q /= np.linalg.norm(q)
+                    H = np.zeros((maxiter, maxiter), dtype=np.complex128)
+                    for p in range(maxiter):
+                        v = scipy.linalg.solve_triangular(T1, scipy.linalg.solve_triangular(T2,q,lower=True)) - beta*qold
+                        alpha = np.dot(q.conj(), v)
+                        v -= alpha*q
+                        beta = np.linalg.norm(v)
+                        qold = q
+                        q = v/beta
+                        H[p+1,p] = beta
+                        H[p,p+1] = beta
+                        H[p,p]   = alpha
+                        sig = np.max(np.linalg.eigvalsh(H[:p+1,:p+1]))
+                        if np.abs(sigold/sig - 1) < rtol:
+                            break
+                        sigold = sig
+
+                    R[j, i] = 1/np.sqrt(sig)
+        return R
+
+    def plot_spectrum(self, spectype='good', xlog=True, ylog=True, real_label="real", imag_label="imag"):
+        """Plots the spectrum.
+
+        The spectrum plots real parts on the x axis and imaginary parts on
+        the y axis.
+
+        Parameters
+        ----------
+        spectype : {'good', 'low', 'high'}, optional
+            specifies whether to use good, low, or high eigenvalues
+        xlog : bool, optional
+            Use symlog on x axis
+        ylog : bool, optional
+            Use symlog on y axis
+        real_label : str, optional
+            Label to be applied to the real axis
+        imag_label : str, optional
+            Label to be applied to the imaginary axis
+        """
+        if spectype == 'low':
+            ev = self.evalues_low
+        elif spectype == 'high':
+            ev = self.evalues_high
         elif spectype == 'good':
             ev = self.evalues_good
         else:
-            raise ValueError("Spectrum type is not one of {raw, hires, good}")
-
-        # Color is sign of imaginary part
-        colors = ["blue" for i in range(len(ev))]
-        imagpos = np.where(ev.imag >= 0)
-        for p in imagpos[0]:
-            colors[p] = "red"
-
-        # Symbol is sign of real part
-        symbols = ["." for i in range(len(ev))]
-        thickness = np.zeros(len(ev))
-        realpos = np.where(ev.real >= 0)
-        for p in realpos[0]:
-            symbols[p] = "+"
-            thickness[p] = 2
-
-        print("Number of positive real parts", len(realpos[0]))
+            raise ValueError("Spectrum type is not one of {low, high, good}")
 
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        for x, y, c, s, t in zip(np.abs(ev.real), np.abs(ev.imag), colors, symbols, thickness):
-            if x is not np.ma.masked:
-                ax.plot(x, y, s, c=c, alpha = 0.5, ms = 8, mew = t)
+                
+        ax.scatter(ev.real, ev.imag)
 
-        # Dummy plot for legend
-        ax.plot(0, 0, '+', c = "red", alpha = 0.5, mew = 2, label = r"$\gamma \geq 0$, $\omega > 0$")
-        ax.plot(0, 0, '+', c = "blue", alpha = 0.5, mew = 2, label = r"$\gamma \geq 0$, $\omega < 0$")
-        ax.plot(0, 0, '.', c = "red", alpha = 0.5, label = r"$\gamma < 0$, $\omega > 0$")
-        ax.plot(0, 0, '.', c = "blue", alpha = 0.5, label = r"$\gamma < 0$, $\omega < 0$")
-        
-        ax.legend(loc='lower right').draw_frame(False)
-        ax.loglog()
-        ax.set_xlabel(r"$\left|\gamma\right|$", size = 15)
-        ax.set_ylabel(r"$\left|\omega\right|$", size = 15, rotation = 0)
+        if xlog:
+            ax.set_xscale('symlog')
+        if ylog:
+            ax.set_yscale('symlog')
+        ax.set_xlabel(real_label, size = 15)
+        ax.set_ylabel(imag_label, size = 15)
+        fig.tight_layout()
 
-        fig.savefig('{}_spectrum_{}.png'.format(title,spectype))
+        return fig
 
-    def reject_spurious(self, factor=1.5):
-        """may be able to pull everything out of EVP to construct a new one with higher N..."""
-        self.factor = factor
-        self.solve_hires()
-        evg, indx = self.discard_spurious_eigenvalues()
+    def _reject_spurious(self):
+        """perform eigenvalue rejection
+
+        """
+        evg, indx = self._discard_spurious_eigenvalues()
         self.evalues_good = evg
-        self.evalues_good_index = indx
+        self.evalues_index = indx
+        self.evalues = self.evalues_good
 
-        
-    def solve_hires(self):
+    def _build_hires(self):
+        """builds a high-resolution EVP from the EVP passed in at
+        construction
+
+        """
         old_evp = self.EVP
-        old_d = old_evp.domain
-        old_x = old_d.bases[0]
-        old_x_grid = old_d.grid(0, scales=old_d.dealias)
-        if type(old_x) == de.Compound:
-            bases = []
-            for basis in old_x.subbases:
-                old_x_type = basis.__class__.__name__
-                n_hi = int(basis.base_grid_size*self.factor)
-                if old_x_type == "Chebyshev":
-                    x = de.Chebyshev(basis.name, n_hi, interval=basis.interval)
-                elif old_x_type == "Fourier":
-                    x = de.Fourier(basis.name, n_hi, interval=basis.interval)
-                else:
-                    raise ValueError("Don't know how to make a basis of type {}".format(old_x_type))
-                bases.append(x)
-            x = de.Compound(old_x.name, tuple(bases))
-        else:
-            old_x_type = old_x.__class__.__name__
-            n_hi = int(old_x.coeff_size * self.factor)
-            if old_x_type == "Chebyshev":
-                x = de.Chebyshev(old_x.name,n_hi,interval=old_x.interval)
-            elif old_x_type == "Fourier":
-                x = de.Fourier(old_x.name,n_hi,interval=old_x.interval)
-            else:
-                raise ValueError("Don't know how to make a basis of type {}".format(old_x_type))
-        d = de.Domain([x],comm=old_d.dist.comm)
-        self.EVP_hires = de.EVP(d,old_evp.variables,old_evp.eigenvalue, ncc_cutoff=old_evp.ncc_kw['cutoff'], max_ncc_terms=old_evp.ncc_kw['max_terms'], tolerance=old_evp.tol)
+        old_x = old_evp.domain.bases[0]
 
-        x_grid = d.grid(0, scales=d.dealias)
-        
+        x = tools.basis_from_basis(old_x, self.factor)
+        d = de.Domain([x],comm=old_evp.domain.dist.comm)
+        self.EVP_hires = de.EVP(d,old_evp.variables,old_evp.eigenvalue, ncc_cutoff=old_evp.ncc_kw['cutoff'], max_ncc_terms=old_evp.ncc_kw['max_terms'], tolerance=self.EVP.tol)
+
         for k,v in old_evp.substitutions.items():
             self.EVP_hires.substitutions[k] = v
 
@@ -172,187 +644,89 @@ class Eigenproblem():
             # distingishes BCs from other equations
             pass
 
-        solver = self.EVP_hires.build_solver()
-        if self.sparse:
-            solver.solve_sparse(solver.pencils[self.pencil], N=10, target=0, rebuild_coeffs=True)
+        self.hires_solver = self.EVP_hires.build_solver()
+        
+    def _discard_spurious_eigenvalues(self):
+        """ Solves the linear eigenvalue problem for two different
+        resolutions.  Returns trustworthy eigenvalues using nearest delta,
+        from Boyd chapter 7.
+        """
+        eval_low = self.evalues_low
+        eval_hi = self.evalues_high
+
+        # Reverse engineer correct indices to make unsorted list from sorted
+        reverse_eval_low_indx = np.arange(len(eval_low)) 
+        reverse_eval_hi_indx = np.arange(len(eval_hi))
+    
+        eval_low_and_indx = np.asarray(list(zip(eval_low, reverse_eval_low_indx)))
+        eval_hi_and_indx = np.asarray(list(zip(eval_hi, reverse_eval_hi_indx)))
+        
+        # remove nans
+        eval_low_and_indx = eval_low_and_indx[np.isfinite(eval_low)]
+        eval_hi_and_indx = eval_hi_and_indx[np.isfinite(eval_hi)]
+    
+        # Sort eval_low and eval_hi by real parts
+        eval_low_and_indx = eval_low_and_indx[np.argsort(eval_low_and_indx[:, 0].real)]
+        eval_hi_and_indx = eval_hi_and_indx[np.argsort(eval_hi_and_indx[:, 0].real)]
+        
+        eval_low_sorted = eval_low_and_indx[:, 0]
+        eval_hi_sorted = eval_hi_and_indx[:, 0]
+
+        # Compute sigmas from lower resolution run (gridnum = N1)
+        sigmas = np.zeros(len(eval_low_sorted))
+        sigmas[0] = np.abs(eval_low_sorted[0] - eval_low_sorted[1])
+        sigmas[1:-1] = [0.5*(np.abs(eval_low_sorted[j] - eval_low_sorted[j - 1]) + np.abs(eval_low_sorted[j + 1] - eval_low_sorted[j])) for j in range(1, len(eval_low_sorted) - 1)]
+        sigmas[-1] = np.abs(eval_low_sorted[-2] - eval_low_sorted[-1])
+
+        if not (np.isfinite(sigmas)).all():
+            logger.warning("At least one eigenvalue spacings (sigmas) is non-finite (np.inf or np.nan)!")
+    
+        # Ordinal delta
+        self.delta_ordinal = np.array([np.abs(eval_low_sorted[j] - eval_hi_sorted[j])/sigmas[j] for j in range(len(eval_low_sorted))])
+
+        # Nearest delta
+        self.delta_near = np.array([np.nanmin(np.abs(eval_low_sorted[j] - eval_hi_sorted)/sigmas[j]) for j in range(len(eval_low_sorted))])
+    
+        # Discard eigenvalues with 1/delta_near < drift_threshold
+        if self.use_ordinal:
+            inverse_drift = 1/self.delta_ordinal
         else:
-            solver.solve_dense(solver.pencils[self.pencil], rebuild_coeffs=True)
-        self.evalues_hires = solver.eigenvalues
+            inverse_drift = 1/self.delta_near
+        eval_low_and_indx = eval_low_and_indx[np.where(inverse_drift > self.drift_threshold)]
+        
+        eval_low = eval_low_and_indx[:, 0]
+        indx = eval_low_and_indx[:, 1].real.astype(np.int)
+    
+        return eval_low, indx
 
-    def discard_spurious_eigenvalues(self):
+    def plot_drift_ratios(self):
+        """Plot drift ratios (both ordinal and nearest) vs. mode number.
+
+        The drift ratios give a measure of how good a given eigenmode is;
+        this can help set thresholds.
+
+        Returns
+        -------
+        matplotlib.figure.Figure        
+
         """
-        Solves the linear eigenvalue problem for two different resolutions.
-        Returns trustworthy eigenvalues using nearest delta, from Boyd chapter 7.
-        """
+        if self.reject is False:
+            raise NotImplementedError("Can't plot drift ratios unless eigenvalue rejection is True.")
 
-        # Solve the linear eigenvalue problem at two different resolutions.
-        #LEV1 = self.evalues
-        #LEV2 = self.evalues_hires
-        # Eigenvalues returned by dedalus must be multiplied by -1
-        lambda1 = self.evalues #-LEV1.eigenvalues
-        lambda2 = self.evalues_hires #-LEV2.eigenvalues
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        mode_numbers = np.arange(len(self.delta_near))
+        ax.semilogy(mode_numbers,1/self.delta_near,'o',alpha=0.4)
+        ax.semilogy(mode_numbers,1/self.delta_ordinal,'x',alpha=0.4)
 
-        # Reverse engineer correct indices to make unsorted list from sorted
-        reverse_lambda1_indx = np.arange(len(lambda1)) 
-        reverse_lambda2_indx = np.arange(len(lambda2))
-    
-        lambda1_and_indx = np.asarray(list(zip(lambda1, reverse_lambda1_indx)))
-        lambda2_and_indx = np.asarray(list(zip(lambda2, reverse_lambda2_indx)))
-        
-        #print(lambda1_and_indx, lambda1_and_indx.shape, lambda1, len(lambda1))
+        ax.set_prop_cycle(None)
+        good_near = 1/self.delta_near > self.drift_threshold
+        good_ordinal = 1/self.delta_ordinal > self.drift_threshold
+        ax.semilogy(mode_numbers[good_near],1/self.delta_near[good_near],'o', label='nearest')
+        ax.semilogy(mode_numbers[good_ordinal],1/self.delta_ordinal[good_ordinal],'x',label='ordinal')
+        ax.axhline(self.drift_threshold,alpha=0.4, color='black')
+        ax.set_xlabel("mode number", size=15)
+        ax.set_ylabel(r"$1/\delta$", size=15)
+        ax.legend(fontsize=15)
 
-        # remove nans
-        lambda1_and_indx = lambda1_and_indx[np.isfinite(lambda1)]
-        lambda2_and_indx = lambda2_and_indx[np.isfinite(lambda2)]
-    
-        # Sort lambda1 and lambda2 by real parts
-        lambda1_and_indx = lambda1_and_indx[np.argsort(lambda1_and_indx[:, 0].real)]
-        lambda2_and_indx = lambda2_and_indx[np.argsort(lambda2_and_indx[:, 0].real)]
-        
-        lambda1_sorted = lambda1_and_indx[:, 0]
-        lambda2_sorted = lambda2_and_indx[:, 0]
-
-        # Compute sigmas from lower resolution run (gridnum = N1)
-        sigmas = np.zeros(len(lambda1_sorted))
-        sigmas[0] = np.abs(lambda1_sorted[0] - lambda1_sorted[1])
-        sigmas[1:-1] = [0.5*(np.abs(lambda1_sorted[j] - lambda1_sorted[j - 1]) + np.abs(lambda1_sorted[j + 1] - lambda1_sorted[j])) for j in range(1, len(lambda1_sorted) - 1)]
-        sigmas[-1] = np.abs(lambda1_sorted[-2] - lambda1_sorted[-1])
-
-        if not (np.isfinite(sigmas)).all():
-            print("WARNING: at least one eigenvalue spacings (sigmas) is non-finite (np.inf or np.nan)!")
-    
-        # Nearest delta
-        delta_near = np.array([np.nanmin(np.abs(lambda1_sorted[j] - lambda2_sorted)/sigmas[j]) for j in range(len(lambda1_sorted))])
-    
-        # Discard eigenvalues with 1/delta_near < 10^6
-        lambda1_and_indx = lambda1_and_indx[np.where((1.0/delta_near) > 1E6)]
-        #print(lambda1_and_indx)
-        
-        lambda1 = lambda1_and_indx[:, 0]
-        indx = lambda1_and_indx[:, 1].astype(np.int)
-        
-        #delta_near_unsorted = delta_near[reverse_lambda1_indx]
-        #lambda1[np.where((1.0/delta_near_unsorted) < 1E6)] = None
-        #lambda1[np.where(np.isnan(1.0/delta_near_unsorted) == True)] = None
-    
-        return lambda1, indx
-
-    def discard_spurious_eigenvalues2(self, problem):
-    
-        """
-        Solves the linear eigenvalue problem for two different resolutions.
-        Returns trustworthy eigenvalues using nearest delta, from Boyd chapter 7.
-        """
-
-        # Solve the linear eigenvalue problem at two different resolutions.
-        LEV1 = self.solve_LEV(problem)
-        LEV2 = self.solve_LEV_secondgrid(problem)
-    
-        # Eigenvalues returned by dedalus must be multiplied by -1
-        lambda1 = -LEV1.eigenvalues
-        lambda2 = -LEV2.eigenvalues
-    
-        # Sorted indices for lambda1 and lambda2 by real parts
-        lambda1_indx = np.argsort(lambda1.real)
-        lambda2_indx = np.argsort(lambda2.real)
-        
-        # Reverse engineer correct indices to make unsorted list from sorted
-        reverse_lambda1_indx = sorted(range(len(lambda1_indx)), key=lambda1_indx.__getitem__)
-        reverse_lambda2_indx = sorted(range(len(lambda2_indx)), key=lambda2_indx.__getitem__)
-        
-        self.lambda1_indx = lambda1_indx
-        self.reverse_lambda1_indx = reverse_lambda1_indx
-        self.lambda1 = lambda1
-        
-        # remove nans
-        lambda1_indx = lambda1_indx[np.isfinite(lambda1)]
-        reverse_lambda1_indx = np.asarray(reverse_lambda1_indx)
-        reverse_lambda1_indx = reverse_lambda1_indx[np.isfinite(lambda1) == True]
-        #lambda1 = lambda1[np.isfinite(lambda1)]
-        
-        lambda2_indx = lambda2_indx[np.isfinite(lambda2)]
-        reverse_lambda2_indx = np.asarray(reverse_lambda2_indx)
-        reverse_lambda2_indx = reverse_lambda2_indx[np.isfinite(lambda2)]
-        #lambda2 = lambda2[np.isfinite(lambda2)]
-        
-        # Actually sort the eigenvalues by their real parts
-        lambda1_sorted = lambda1[lambda1_indx]
-        lambda2_sorted = lambda2[lambda2_indx]
-        
-        self.lambda1_sorted = lambda1_sorted
-        #print(lambda1_sorted)
-        #print(len(lambda1_sorted), len(np.where(np.isfinite(lambda1) == True)))
-    
-        # Compute sigmas from lower resolution run (gridnum = N1)
-        sigmas = np.zeros(len(lambda1_sorted))
-        sigmas[0] = np.abs(lambda1_sorted[0] - lambda1_sorted[1])
-        sigmas[1:-1] = [0.5*(np.abs(lambda1_sorted[j] - lambda1_sorted[j - 1]) + np.abs(lambda1_sorted[j + 1] - lambda1_sorted[j])) for j in range(1, len(lambda1_sorted) - 1)]
-        sigmas[-1] = np.abs(lambda1_sorted[-2] - lambda1_sorted[-1])
-
-        if not (np.isfinite(sigmas)).all():
-            print("WARNING: at least one eigenvalue spacings (sigmas) is non-finite (np.inf or np.nan)!")
-    
-        # Nearest delta
-        delta_near = np.array([np.nanmin(np.abs(lambda1_sorted[j] - lambda2_sorted)/sigmas[j]) for j in range(len(lambda1_sorted))])
-    
-        #print(len(delta_near), len(reverse_lambda1_indx), len(LEV1.eigenvalues))
-        # Discard eigenvalues with 1/delta_near < 10^6
-        delta_near_unsorted = np.zeros(len(LEV1.eigenvalues))
-        for i in range(len(delta_near)):
-            delta_near_unsorted[reverse_lambda1_indx[i]] = delta_near[i]
-        #delta_near_unsorted[reverse_lambda1_indx] = delta_near#[reverse_lambda1_indx]
-        #print(delta_near_unsorted)
-        
-        self.delta_near_unsorted = delta_near_unsorted
-        self.delta_near = delta_near
-        
-        goodeigs = copy.copy(LEV1.eigenvalues)
-        goodeigs[np.where((1.0/delta_near_unsorted) < 1E6)] = None
-        goodeigs[np.where(np.isfinite(1.0/delta_near_unsorted) == False)] = None
-    
-        return goodeigs, LEV1
-        
-    def find_spurious_eigenvalues(self):
-    
-        """
-        Solves the linear eigenvalue problem for two different resolutions.
-        Returns drift ratios, from Boyd chapter 7.
-        """
-    
-        lambda1 = self.evalues
-        lambda2 = self.evalues_hires
-        
-        # Make sure argsort treats complex infs correctly
-        for i in range(len(lambda1)):
-            if (np.isnan(lambda1[i]) == True) or (np.isinf(lambda1[i]) == True):
-                lambda1[i] = None
-        for i in range(len(lambda2)):
-            if (np.isnan(lambda2[i]) == True) or (np.isinf(lambda2[i]) == True):
-                lambda2[i] = None        
-        
-        #lambda1[np.where(np.isnan(lambda1) == True)] = None
-        #lambda2[np.where(np.isnan(lambda2) == True)] = None
-                
-        # Sort lambda1 and lambda2 by real parts
-        lambda1_indx = np.argsort(lambda1.real)
-        lambda1 = lambda1[lambda1_indx]
-        lambda2_indx = np.argsort(lambda2.real)
-        lambda2 = lambda2[lambda2_indx]
-        
-        # try using lower res (gridnum = N1) instead
-        sigmas = np.zeros(len(lambda1))
-        sigmas[0] = np.abs(lambda1[0] - lambda1[1])
-        sigmas[1:-1] = [0.5*(np.abs(lambda1[j] - lambda1[j - 1]) + np.abs(lambda1[j + 1] - lambda1[j])) for j in range(1, len(lambda1) - 1)]
-        sigmas[-1] = np.abs(lambda1[-2] - lambda1[-1])
-        
-        # Ordinal delta, calculated for the number of lambda1's.
-        delta_ord = (lambda1 - lambda2[:len(lambda1)])/sigmas
-        
-        # Nearest delta
-        delta_near = [np.nanmin(np.abs(lambda1[j] - lambda2)) for j in range(len(lambda1))]/sigmas
-        
-        # Discard eigenvalues with 1/delta_near < 10^6
-        goodevals1 = lambda1[1/delta_near > 1E6]
-        
-        return delta_ord, delta_near, lambda1, lambda2, sigmas
-        
+        return fig

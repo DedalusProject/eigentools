@@ -1,5 +1,11 @@
-"""finds the critical magnetic Renoylds number and wave number for the
-MRI eigenvalue equation.
+"""
+finds the critical magnetic Renoylds number and wave number for the magnetorotational instability (MRI).
+
+This script can be run in parallel by using 
+
+$ mpirun -np 4 python3 mri.py
+
+It will parallelize over the grid generation portion and save that 
 
 """
 import sys
@@ -9,6 +15,10 @@ import time
 import dedalus.public as de
 import numpy as np
 import matplotlib.pylab as plt
+
+import logging
+
+logger = logging.getLogger(__name__.split('.')[-1])
 
 comm = MPI.COMM_WORLD
 
@@ -26,8 +36,9 @@ Pm = 0.001
 mri.parameters['q'] = 1.5
 mri.parameters['beta'] = 25.0
 mri.parameters['iR'] = Pm/Rm
-mri.parameters['iRm'] = 1./Rm
+mri.parameters['Rm'] = Rm
 mri.parameters['Q'] = 0.748
+mri.substitutions['iRm'] = '1/Rm'
 
 mri.add_equation("sigma*psixx - Q**2*sigma*psi - iR*dx(psixxx) + 2*iR*Q**2*psixx - iR*Q**4*psi - 2*1j*Q*u - (2/beta)*1j*Q*dx(Ax) + (2/beta)*Q**3*1j*A = 0")
 mri.add_equation("sigma*u - iR*dx(ux) + iR*Q**2*u - (q - 2)*1j*Q*psi - (2/beta)*1j*Q*B = 0") 
@@ -53,37 +64,52 @@ mri.add_bc("left(Bx) = 0")
 mri.add_bc("right(Bx) = 0")
 
 # create an Eigenproblem object
-EP = Eigenproblem(mri, sparse=True)
+EP = Eigenproblem(mri)
 
-# create a shim function to translate (x, y) to the parameters for the eigenvalue problem:
-def shim(x,y):
-    iRm = 1/x
-    iRe = (iRm*Pm)
-    print("Rm = {}; Re = {}; Pm = {}".format(1/iRm, 1/iRe, Pm))
-    gr, indx, freq = EP.growth_rate({"Q":y,"iRm":iRm,"iR":iRe})
-    ret = gr+1j*freq
-    return ret
-
-cf = CriticalFinder(shim, comm)
+cf = CriticalFinder(EP, ("Q", "Rm"), comm, find_freq=False)
 
 # generating the grid is the longest part
-start = time.time()
-mins = np.array((4.6, 0.5))
-maxs = np.array((5.5, 1.5))
-ns   = np.array((10,10))
-logs = np.array((False, False))
-#cf.load_grid('mri_growth_rates.h5')
-cf.grid_generator(mins, maxs, ns, logs=logs)
-if comm.rank == 0:
-    cf.save_grid('mri_growth_rates')
-end = time.time()
-print("grid generation time: {:10.5f} sec".format(end-start))
+nx = 20
+ny = 20
+xpoints = np.linspace(0.5, 1.5, nx)
+ypoints = np.linspace(4.6, 5.5, ny)
 
-cf.root_finder()
-crit = cf.crit_finder(find_freq=True)
+file_name = 'mri_growth_rate'
+try:
+    cf.load_grid('{}.h5'.format(file_name))
+except:
+    start = time.time()
+    cf.grid_generator((xpoints, ypoints), sparse=True)
+    end = time.time()
+
+    if comm.rank == 0:
+        cf.save_grid(file_name)
+        logger.info("grid generation time: {:10.5f} sec".format(end-start))
+
+crit = cf.crit_finder(polish_roots=False)
 
 if comm.rank == 0:
-    print("critical wavenumber alpha = {:10.5f}".format(crit[0]))
-    print("critical Re = {:10.5f}".format(crit[1]))
-    cf.plot_crit()
-    cf.save_grid('mri_growth_rates')
+    logger.info("critical Rm = {:10.5f}, Q = {:10.5f}".format(crit[1], crit[0]))
+    # create plot of critical parameter space
+    fig = cf.plot_crit()
+
+    # add an interpolated critical line
+    x_lim = cf.parameter_grids[0][0,np.isfinite(cf.roots)]
+    x_hires = np.linspace(x_lim[0], x_lim[-1], 100)
+    fig.axes[0].plot(x_hires, cf.root_fn(x_hires), color='k')
+    fig.savefig('{}.png'.format(file_name), dpi=300)
+
+    # plot the spectrum for the critical mode
+    logger.info("solving dense eigenvalue problem for critical parameters")
+    EP.solve(parameters = {"Q": crit[0], "Rm": crit[1]}, sparse=False)
+    fig = EP.plot_spectrum()
+
+    # mark critical mode
+    eps = 1e-2
+    mask = np.abs(EP.evalues.real) < eps
+    fig.axes[0].scatter(EP.evalues[mask].real, EP.evalues[mask].imag, c='red')
+    fig.savefig('mri_critical_spectrum.png', dpi=300)
+
+    # plot drift ratio for critical mode
+    fig = EP.plot_drift_ratios()
+    fig.savefig('mri_critical_drift_ratios.png', dpi=300)

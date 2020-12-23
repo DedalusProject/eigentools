@@ -1,4 +1,5 @@
-# Eigentools
+Eigentools
+**********
 
 Eigentools is a set of tools for studying linear eigenvalue problems. The underlying eigenproblems are solved using [Dedalus](http://dedalus-project.org), which provides a domain-specific language for partial differential equations. Eigentools extends Dedalus's `EigenvalueProblem` object and provides
 
@@ -11,21 +12,16 @@ Eigentools is a set of tools for studying linear eigenvalue problems. The underl
 * ability to output projected eigenmodes as Dedalus-formatted HDF5 file to be used as initial conditions for Initial Value Problems
 * simple plotting of drift ratios (both ordinal and nearest) to evaluate tolerance for eigenvalue rejection
 
-## Installation
+Doc Contents
+============
 
-Eigentools requires [Dedalus](http://dedalus-project.org), which can be installed along with all of its dependencies using conda via [its install script](https://dedalus-project.readthedocs.io/en/latest/pages/installation.html#conda-installation-recommended). 
+.. toctree::
+   :maxdepth: 2
 
-Once Dedalus is installed, eigentools can be pip installed in the same conda environment via
+   Eigentools API reference <autoapi/eigentools/index>
 
-```
-pip install eigentools
-```
-
-## Documentation
-
-API Documentation can be found at [Read the Docs](eigentools.readthedocs.io).
-
-## Developers
+Developers
+==========
 The core development team consists of 
 
 * Jeff Oishi (<jsoishi@gmail.com>)
@@ -36,13 +32,7 @@ The core development team consists of
 * Geoff Vasil (<geoffrey.m.vasil@gmail.com>)
 * Daniel Lecoanet (<daniel.lecoanet@northwestern.edu>)
 
-## Support 
+Support
+=======
 Eigentools was developed with support from the Research Corporation under award Scialog Collaborative Award (TDA) ID# 24231.
 
-
-<!--  LocalWords:  Eigentools eigenproblems Dedalus EigenvalueProblem
- -->
-<!--  LocalWords:  eigenmodes pseudospectra eigenmode HDF conda Oishi
- -->
-<!--  LocalWords:  eigentools Anders Geoff Vasil Lecoanet Scialog TDA
- -->
