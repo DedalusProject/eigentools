@@ -557,7 +557,7 @@ class Eigenproblem():
                     R[j, i] = 1/np.sqrt(sig)
         return R
 
-    def spectrum(self, figtitle='eigenvalue', spectype='good', xlog=True, ylog=True, real_label="real", imag_label="imag"):
+    def plot_spectrum(self, spectype='good', xlog=True, ylog=True, real_label="real", imag_label="imag"):
         """Plots the spectrum.
 
         The spectrum plots real parts on the x axis and imaginary parts on
@@ -565,8 +565,6 @@ class Eigenproblem():
 
         Parameters
         ----------
-        figtitle : str, optional
-            string to be used in output filename.
         spectype : {'good', 'low', 'high'}, optional
             specifies whether to use good, low, or high eigenvalues
         xlog : bool, optional
@@ -599,7 +597,6 @@ class Eigenproblem():
         ax.set_xlabel(real_label, size = 15)
         ax.set_ylabel(imag_label, size = 15)
         fig.tight_layout()
-        fig.savefig('{}_spectrum_{}.png'.format(figtitle,spectype))
 
         return fig
 

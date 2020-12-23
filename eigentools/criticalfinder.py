@@ -266,7 +266,7 @@ class CriticalFinder:
             logger.warning('Optimize results not fully converged, returning crit_finder results.')
             return guess
 
-    def plot_crit(self, title='growth_rates', transpose=False, xlabel = None, ylabel = None, zlabel="growth rate", cmap="viridis"):
+    def plot_crit(self, transpose=False, xlabel = None, ylabel = None, zlabel="growth rate", cmap="viridis"):
         """Create a 2D colormap of the grid of growth rates.  
 
         If available, the root values that have been found will be plotted
@@ -274,8 +274,6 @@ class CriticalFinder:
 
         Parameters
         ----------
-        title : str, optional
-            The name of the plot, which will be saved to "title".png
         transpose : bool, optional
             If True, plot dim 0 on the y axis and dim 1 on the x axis.
         xlabel : str, optional
@@ -331,6 +329,5 @@ class CriticalFinder:
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         plt.tight_layout()
-        fig.savefig('{}.png'.format(title))
         
         return fig
