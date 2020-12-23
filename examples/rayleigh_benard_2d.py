@@ -11,6 +11,10 @@ import time
 import dedalus.public as de
 import numpy as np
 import sys
+import logging
+
+logger = logging.getLogger(__name__.split('.')[-1])
+
 
 comm = MPI.COMM_WORLD
 
@@ -92,10 +96,13 @@ except:
 
 end = time.time()
 if comm.rank == 0:
-    print("grid generation time: {:10.5f} sec".format(end-start))
+    logger.info("grid generation time: {:10.5f} sec".format(end-start))
 
+logger.info("Beginning critical finding with root polishing...")
+begin = time.time()
 crit = cf.crit_finder(polish_roots=True, tol=1e-5)
-
+end = time.time()
+logger.info("critical finding/root polishing time: {:10.5f} sec".format(end-start))
 
 if comm.rank == 0:
     print("crit = {}".format(crit))
@@ -103,4 +110,5 @@ if comm.rank == 0:
     print("critical Ra = {:10.5f}".format(crit[1]))
     print("critical freq = {:10.5f}".format(crit[2]))
 
-    cf.plot_crit(title=file_name, xlabel='kx', ylabel='Ra')
+    fig = cf.plot_crit(xlabel=r'$k_x$', ylabel=r'$\mathrm{Ra}$')
+    fig.savefig("rayleigh_benard_2d_growth_rates.png",dpi=300)

@@ -1,5 +1,11 @@
-"""finds the critical magnetic Renoylds number and wave number for the
-MRI eigenvalue equation.
+"""
+finds the critical magnetic Renoylds number and wave number for the magnetorotational instability (MRI).
+
+This script can be run in parallel by using 
+
+$ mpirun -np 4 python3 mri.py
+
+It will parallelize over the grid generation portion and save that 
 
 """
 import sys
@@ -9,6 +15,10 @@ import time
 import dedalus.public as de
 import numpy as np
 import matplotlib.pylab as plt
+
+import logging
+
+logger = logging.getLogger(__name__.split('.')[-1])
 
 comm = MPI.COMM_WORLD
 
@@ -59,20 +69,47 @@ EP = Eigenproblem(mri)
 cf = CriticalFinder(EP, ("Q", "Rm"), comm, find_freq=False)
 
 # generating the grid is the longest part
-start = time.time()
-nx = 10
-ny = 10
+nx = 20
+ny = 20
 xpoints = np.linspace(0.5, 1.5, nx)
 ypoints = np.linspace(4.6, 5.5, ny)
-#cf.load_grid('mri_growth_rates.h5')
-cf.grid_generator((xpoints, ypoints), sparse=True)
-if comm.rank == 0:
-    cf.save_grid('mri_growth_rates')
-end = time.time()
-print("grid generation time: {:10.5f} sec".format(end-start))
-crit = cf.crit_finder(polish_roots=True)
+
+file_name = 'mri_growth_rate'
+try:
+    cf.load_grid('{}.h5'.format(file_name))
+except:
+    start = time.time()
+    cf.grid_generator((xpoints, ypoints), sparse=True)
+    end = time.time()
+
+    if comm.rank == 0:
+        cf.save_grid(file_name)
+        logger.info("grid generation time: {:10.5f} sec".format(end-start))
+
+crit = cf.crit_finder(polish_roots=False)
 
 if comm.rank == 0:
-    print("critical Re = {:10.5f}".format(crit[1]))
-    cf.plot_crit()
-    cf.save_grid('mri_growth_rates')
+    logger.info("critical Rm = {:10.5f}, Q = {:10.5f}".format(crit[1], crit[0]))
+    # create plot of critical parameter space
+    fig = cf.plot_crit()
+
+    # add an interpolated critical line
+    x_lim = cf.parameter_grids[0][0,np.isfinite(cf.roots)]
+    x_hires = np.linspace(x_lim[0], x_lim[-1], 100)
+    fig.axes[0].plot(x_hires, cf.root_fn(x_hires), color='k')
+    fig.savefig('{}.png'.format(file_name), dpi=300)
+
+    # plot the spectrum for the critical mode
+    logger.info("solving dense eigenvalue problem for critical parameters")
+    EP.solve(parameters = {"Q": crit[0], "Rm": crit[1]}, sparse=False)
+    fig = EP.plot_spectrum()
+
+    # mark critical mode
+    eps = 1e-2
+    mask = np.abs(EP.evalues.real) < eps
+    fig.axes[0].scatter(EP.evalues[mask].real, EP.evalues[mask].imag, c='red')
+    fig.savefig('mri_critical_spectrum.png', dpi=300)
+
+    # plot drift ratio for critical mode
+    fig = EP.plot_drift_ratios()
+    fig.savefig('mri_critical_drift_ratios.png', dpi=300)
