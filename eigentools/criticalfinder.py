@@ -68,14 +68,44 @@ class CriticalFinder:
         load_indices = np.array_split(index,self.size)
         my_indices = load_indices[self.rank]
 
+        if interpolate_sparse and sparse:
+            # choose corners and middle to construct interpolator
+            xskip = dims[0]-1
+            yskip = dims[1]-1
+
+            xpoints = 2*list(self.parameter_grids[0][0,::xskip])
+            ypoints = 2*list(self.parameter_grids[1][::yskip,0])
+            ypoints.sort()
+            xpoints.append(self.parameter_grids[0][0,dims[0]//2-1])
+            ypoints.append(self.parameter_grids[1][dims[1]//2-1,0])
+
+            data = []
+            for x,y in zip(xpoints, ypoints):
+                    logger.info("corner finding: x,y = {},{}".format(x,y))
+                    gr, index, freq = self.growth_rate((x, y), sparse=False)
+                    data.append(gr+1j*freq)
+            print(xpoints)
+            print(ypoints)
+            print(data)
+            data = np.array(data, dtype=np.complex128)
+            sparse_interpolator_real = interpolate.interp2d(xpoints, ypoints, data.real)
+            sparse_interpolator_imag = interpolate.interp2d(xpoints, ypoints, data.imag)
+            
+
+
+
         # Calculate growth values for local process grid
         local_grid = np.empty(my_indices.size,dtype=np.complex128)
         for n, index in enumerate(my_indices):
             logger.info("Solving Local EVP {}/{}".format(n+1, len(my_indices)))
             unraveled_index = np.unravel_index(index, dims)
             values = [self.parameter_grids[i][unraveled_index] for i,v in enumerate(self.parameter_grids)]
-
-            gr, indx, freq = self._growth_rate(values, sparse=sparse)
+            if interpolate_sparse and sparse:
+                target = sparse_interpolator_real(*values) + 1j*sparse_interpolator_imag(*values)
+                print("target = {}".format(target[0]))
+                gr, indx, freq = self.growth_rate(values, target=target[0], sparse=sparse)
+            else:
+                gr, indx, freq = self.growth_rate(values, sparse=sparse)
             local_grid[n] = gr + 1j*freq
 
         # Communicate growth modes to root
