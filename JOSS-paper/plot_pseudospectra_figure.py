@@ -3,6 +3,9 @@ from mpi4py import MPI
 from eigentools import Eigenproblem, CriticalFinder
 import dedalus.public as de
 import numpy as np
+
+colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
 plt.style.use('prl')
 z = de.Chebyshev('z', 128)
 d = de.Domain([z],comm=MPI.COMM_SELF)
@@ -72,17 +75,20 @@ mode_axes.append(fig.add_axes([left+width+c_width+4*x_unit,bottom+height+y_unit,
 spec_axes = fig.add_axes([left+width+2*x_unit,bottom, c_width, c_height])
 
 
-CS = spec_axes.contour(prim_EP.ps_real,prim_EP.ps_imag, np.log10(prim_EP.pseudospectrum),levels=np.arange(-8,0),linestyles='solid',colors='k')
-spec_axes.clabel(CS,inline=1,fmt='%d')
-spec_axes.scatter(prim_EP.evalues.real, prim_EP.evalues.imag,color='blue',marker='o',zorder=2,alpha=0.7)
+CS = spec_axes.contour(prim_EP.ps_real,prim_EP.ps_imag, np.log10(prim_EP.pseudospectrum),levels=np.arange(-8,0),linestyles='solid',colors='k', zorder=1)
+
+locations = [(0.1,-0.75),(0.28,-0.72),(0.4,-0.7),(0.45,-0.62),(0.48,-0.6),(0.55,-0.55),(0.6,-0.5),(0.65,-0.44)]
+spec_axes.clabel(CS,inline=1,fmt='%d', manual=locations[::-1])
+spec_axes.scatter(prim_EP.evalues.real, prim_EP.evalues.imag,color='grey', marker='o', zorder=2)
 spec_axes.set_xlim(0,1)
 spec_axes.set_ylim(-1,0.1)
 spec_axes.axhline(0,color='k',alpha=0.2)
 spec_axes.set_xlabel(r"$c_r$")
 spec_axes.set_ylabel(r"$c_i$")
 
+# selected modes to plot 
 modes = [0,2, 31, -1]
-spec_axes.scatter(prim_EP.evalues[modes].real, prim_EP.evalues[modes].imag,color='black',marker='o',facecolors='none',zorder=3)
+spec_axes.scatter(prim_EP.evalues[modes].real, prim_EP.evalues[modes].imag,color=colors[1],marker='o',zorder=3)
 z = prim_EP.grid()
 for i, m in enumerate(modes):
     state = prim_EP.eigenmode(m)
