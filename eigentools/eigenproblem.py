@@ -361,7 +361,7 @@ class Eigenproblem():
 
         output_evaluator.evaluate_handlers(output_evaluator.handlers, timestep=0,sim_time=0, world_time=0, wall_time=0, iteration=0)
 
-        merge_process_files(base_name, cleanup=True)
+        merge_process_files(base_name, cleanup=True, comm=output_evaluator.domain.distributor.comm)
 
     def calc_ps(self, k, zgrid, mu=0., pencil=0, inner_product=None, norm=-2, maxiter=10, rtol=1e-3):
         """computes epsilon-pseudospectrum for the eigenproblem.
