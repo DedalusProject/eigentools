@@ -57,7 +57,7 @@ prim_EP.calc_ps(k, (real_points, imag_points), inner_product=energy_norm)
 x_unit = 1/15
 y_unit = 1/7
 aspect = x_unit/y_unit
-width = 10
+width = 12
 height = aspect *width
 fig = plt.figure(figsize=[width,height])
 
@@ -94,12 +94,16 @@ for i, m in enumerate(modes):
     state = prim_EP.eigenmode(m)
     evalue = prim_EP.evalues[m]
     norm = np.abs(state['w']['g']).max()
-    mode_axes[i].plot(z, np.abs(state['u']['g'])/norm, label=r'$|u|$')
-    mode_axes[i].plot(z, np.abs(state['w']['g'])/norm, label=r'$|w|$')
+    # mode_axes[i].plot(z, np.abs(state['u']['g'])/norm, label=r'$|u|$')
+    # mode_axes[i].plot(z, np.abs(state['w']['g'])/norm, label=r'$|w|$')
+    mode_axes[i].plot(z, state['u']['g'].real/norm, label=r'$\Re{u}$',color=colors[0], alpha=0.75)
+    mode_axes[i].plot(z, state['w']['g'].real/norm, label=r'$\Re{w}$',color=colors[1], alpha=0.75)
+    mode_axes[i].plot(z, state['u']['g'].imag/norm, label=r'$\Im{u}$',color=colors[0], alpha=0.75, linestyle='dashed')
+    mode_axes[i].plot(z, state['w']['g'].imag/norm, label=r'$\Im{w}$',color=colors[1], alpha=0.75, linestyle='dashed')
 
     mode_axes[i].set_title(r'$(c_r, c_i) = ({:4.3f},{:4.3f})$'.format(evalue.real, evalue.imag), fontsize=10)
 
-mode_axes[0].legend(fontsize=12)
+mode_axes[3].legend(bbox_to_anchor=(-0.25,0.1),fontsize=12)
 mode_axes[0].set_xlabel(r"$z$")
 mode_axes[0].set_ylabel(r"$|\mathbf{u}|$")
 fig.savefig("pseudospectra.png", dpi=300)
