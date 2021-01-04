@@ -110,5 +110,5 @@ if comm.rank == 0:
     print("critical Ra = {:10.5f}".format(crit[1]))
     print("critical freq = {:10.5f}".format(crit[2]))
 
-    fig = cf.plot_crit(xlabel=r'$k_x$', ylabel=r'$\mathrm{Ra}$')
-    fig.savefig("rayleigh_benard_2d_growth_rates.png",dpi=300)
+    pax, cax = cf.plot_crit(xlabel=r'$k_x$', ylabel=r'$\mathrm{Ra}$')
+    pax.figure.savefig("rayleigh_benard_2d_growth_rates.png",dpi=300)

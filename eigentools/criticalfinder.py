@@ -4,6 +4,7 @@ from mpi4py import MPI
 import h5py
 from scipy import interpolate, optimize
 import matplotlib.pyplot as plt
+from matplotlib import transforms
 
 from dedalus.tools.cache import CachedAttribute
 
@@ -266,7 +267,7 @@ class CriticalFinder:
             logger.warning('Optimize results not fully converged, returning crit_finder results.')
             return guess
 
-    def plot_crit(self, transpose=False, xlabel = None, ylabel = None, zlabel="growth rate", cmap="viridis"):
+    def plot_crit(self, axes=None, transpose=False, xlabel = None, ylabel = None, zlabel="growth rate", cmap="viridis"):
         """Create a 2D colormap of the grid of growth rates.  
 
         If available, the root values that have been found will be plotted
@@ -287,9 +288,14 @@ class CriticalFinder:
         """
         if self.rank != 0:
             return
+        
+        if axes is None:
+            fig = plt.figure(figsize=[8,8])
+            ax = fig.add_subplot(111)
+        else:
+            ax = axes
+            fig = axes.figure
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
         # Grab out grid data for colormap
         if transpose:
             xx = self.parameter_grids[1].T
@@ -301,9 +307,25 @@ class CriticalFinder:
             grid = self.evalue_grid.real
         # Plot colormap, only plot 2 stdevs off zero
         biggest_val = 2*np.abs(grid).std()
-        plt.pcolormesh(xx,yy,grid,cmap=cmap,vmin=-biggest_val,vmax=biggest_val)
-        plt.colorbar(label=zlabel)
 
+        # Setup axes
+        # Bounds (left, bottom, width, height) relative-to-axes
+        pbbox = transforms.Bbox.from_bounds(0.03, 0, 0.94, 0.94)
+        cbbox = transforms.Bbox.from_bounds(0.03, 0.95, 0.94, 0.05)
+        # Convert to relative-to-figure
+        to_axes_bbox = transforms.BboxTransformTo(ax.get_position())
+        pbbox = pbbox.transformed(to_axes_bbox)
+        cbbox = cbbox.transformed(to_axes_bbox)
+        # Create new axes and suppress base axes
+        pax = ax.figure.add_axes(pbbox)
+        cax = ax.figure.add_axes(cbbox)
+
+        plot = pax.pcolormesh(xx,yy,grid,cmap=cmap,vmin=-biggest_val,vmax=biggest_val)
+        ax.axis('off')
+        cbar = plt.colorbar(plot, cax=cax, label=zlabel, orientation='horizontal')
+        cbar.outline.set_visible(False)
+        cax.xaxis.set_ticks_position('top')
+        cax.xaxis.set_label_position('top')
         # Plot root data if they're available
         if self.roots is not None:
             if transpose:
@@ -317,17 +339,16 @@ class CriticalFinder:
                 y, x = y[np.isfinite(x)], x[np.isfinite(x)]
             else:
                 y, x = y[np.isfinite(y)], x[np.isfinite(y)]
-            plt.scatter(x,y, color='k')
+            pax.scatter(x,y, color='k')
         
         # Pretty up the plot, save.
-        plt.ylim(yy.min(),yy.max())
-        plt.xlim(xx.min(),xx.max())
+        pax.set_ylim(yy.min(),yy.max())
+        pax.set_xlim(xx.min(),xx.max())
         if xlabel is None:
             xlabel = self.param_names[0]
         if ylabel is None:
             ylabel = self.param_names[1]
-        plt.xlabel(xlabel)
-        plt.ylabel(ylabel)
-        plt.tight_layout()
+        pax.set_xlabel(xlabel)
+        pax.set_ylabel(ylabel)
         
-        return fig
+        return pax,cax
