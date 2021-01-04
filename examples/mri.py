@@ -91,25 +91,25 @@ crit = cf.crit_finder(polish_roots=False)
 if comm.rank == 0:
     logger.info("critical Rm = {:10.5f}, Q = {:10.5f}".format(crit[1], crit[0]))
     # create plot of critical parameter space
-    fig = cf.plot_crit()
-
+    pax,cax = cf.plot_crit()
+    fig = pax.figure
     # add an interpolated critical line
     x_lim = cf.parameter_grids[0][0,np.isfinite(cf.roots)]
     x_hires = np.linspace(x_lim[0], x_lim[-1], 100)
-    fig.axes[0].plot(x_hires, cf.root_fn(x_hires), color='k')
+    pax.plot(x_hires, cf.root_fn(x_hires), color='k')
     fig.savefig('{}.png'.format(file_name), dpi=300)
 
     # plot the spectrum for the critical mode
     logger.info("solving dense eigenvalue problem for critical parameters")
     EP.solve(parameters = {"Q": crit[0], "Rm": crit[1]}, sparse=False)
-    fig = EP.plot_spectrum()
+    ax = EP.plot_spectrum()
 
     # mark critical mode
     eps = 1e-2
     mask = np.abs(EP.evalues.real) < eps
-    fig.axes[0].scatter(EP.evalues[mask].real, EP.evalues[mask].imag, c='red')
-    fig.savefig('mri_critical_spectrum.png', dpi=300)
+    ax.scatter(EP.evalues[mask].real, EP.evalues[mask].imag, c='red')
+    ax.figure.savefig('mri_critical_spectrum.png', dpi=300)
 
     # plot drift ratio for critical mode
-    fig = EP.plot_drift_ratios()
-    fig.savefig('mri_critical_drift_ratios.png', dpi=300)
+    ax = EP.plot_drift_ratios()
+    ax.figure.savefig('mri_critical_drift_ratios.png', dpi=300)

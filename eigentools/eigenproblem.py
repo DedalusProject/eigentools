@@ -299,10 +299,10 @@ class Eigenproblem():
             ax  = fig.add_subplot(nrow,ncol,i+1)
             ax.plot(z, (rotation*state[v]['g']).real, label='real')
             ax.plot(z, (rotation*state[v]['g']).imag, label='imag')
-            ax.set_xlabel(self.grid_name, fontsize=15)
-            ax.set_ylabel(v, fontsize=15)
+            ax.set_xlabel(self.grid_name)
+            ax.set_ylabel(v)
             if i == 0:
-                ax.legend(fontsize=15)
+                ax.legend()
                 
         fig.tight_layout()
 
@@ -557,7 +557,7 @@ class Eigenproblem():
                     R[j, i] = 1/np.sqrt(sig)
         return R
 
-    def plot_spectrum(self, spectype='good', xlog=True, ylog=True, real_label="real", imag_label="imag"):
+    def plot_spectrum(self, axes=None, spectype='good', xlog=True, ylog=True, real_label="real", imag_label="imag"):
         """Plots the spectrum.
 
         The spectrum plots real parts on the x axis and imaginary parts on
@@ -585,8 +585,12 @@ class Eigenproblem():
         else:
             raise ValueError("Spectrum type is not one of {low, high, good}")
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
+        if axes is None:
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+        else:
+            ax = axes
+            fig = axes.figure
                 
         ax.scatter(ev.real, ev.imag)
 
@@ -594,11 +598,12 @@ class Eigenproblem():
             ax.set_xscale('symlog')
         if ylog:
             ax.set_yscale('symlog')
-        ax.set_xlabel(real_label, size = 15)
-        ax.set_ylabel(imag_label, size = 15)
-        fig.tight_layout()
+        ax.set_xlabel(real_label)
+        ax.set_ylabel(imag_label)
+        if axes is None:
+            fig.tight_layout()
 
-        return fig
+        return ax
 
     def _reject_spurious(self):
         """perform eigenvalue rejection
@@ -699,7 +704,7 @@ class Eigenproblem():
     
         return eval_low, indx
 
-    def plot_drift_ratios(self):
+    def plot_drift_ratios(self, axes=None):
         """Plot drift ratios (both ordinal and nearest) vs. mode number.
 
         The drift ratios give a measure of how good a given eigenmode is;
@@ -713,8 +718,13 @@ class Eigenproblem():
         if self.reject is False:
             raise NotImplementedError("Can't plot drift ratios unless eigenvalue rejection is True.")
 
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
+        if axes is None:
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+        else:
+            ax = axes
+            fig = axes.figure
+
         mode_numbers = np.arange(len(self.delta_near))
         ax.semilogy(mode_numbers,1/self.delta_near,'o',alpha=0.4)
         ax.semilogy(mode_numbers,1/self.delta_ordinal,'x',alpha=0.4)
@@ -725,8 +735,8 @@ class Eigenproblem():
         ax.semilogy(mode_numbers[good_near],1/self.delta_near[good_near],'o', label='nearest')
         ax.semilogy(mode_numbers[good_ordinal],1/self.delta_ordinal[good_ordinal],'x',label='ordinal')
         ax.axhline(self.drift_threshold,alpha=0.4, color='black')
-        ax.set_xlabel("mode number", size=15)
-        ax.set_ylabel(r"$1/\delta$", size=15)
-        ax.legend(fontsize=15)
+        ax.set_xlabel("mode number")
+        ax.set_ylabel(r"$1/\delta$")
+        ax.legend()
 
-        return fig
+        return ax
