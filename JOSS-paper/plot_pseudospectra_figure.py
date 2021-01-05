@@ -101,9 +101,10 @@ for i, m in enumerate(modes):
     mode_axes[i].plot(z, state['u']['g'].imag/norm, label=r'$\Im{u}$',color=colors[0], alpha=0.75, linestyle='dashed')
     mode_axes[i].plot(z, state['w']['g'].imag/norm, label=r'$\Im{w}$',color=colors[1], alpha=0.75, linestyle='dashed')
 
-    mode_axes[i].set_title(r'$(c_r, c_i) = ({:4.3f},{:4.3f})$'.format(evalue.real, evalue.imag), fontsize=10)
+    mode_axes[i].set_title(r'$(c_r, c_i) = ({:4.3f},{:4.3f})$'.format(evalue.real, evalue.imag), fontsize=12)
+    mode_axes[i].set_xlim(-1,1)
 
 mode_axes[3].legend(bbox_to_anchor=(-0.25,0.1),fontsize=12)
 mode_axes[0].set_xlabel(r"$z$")
-mode_axes[0].set_ylabel(r"$|\mathbf{u}|$")
+mode_axes[0].set_ylabel(r"$\mathbf{u}$")
 fig.savefig("pseudospectra.png", dpi=300)
