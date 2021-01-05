@@ -180,7 +180,7 @@ It does not feature parallelism nor the ability to construct matrices from PDEs.
 `eigentools` has been used in several papers, including @2017ApJ.841.1C; @2017ApJ.841.2C; @2017PhRvF.2h3501A; @2019ApJ.872.138A; @2020RSPSA.47690622O; @PhysRevResearch.2.023068; and @2020arXiv201112300L.
 
 # Acknowledgments
-Eigentools was developed with support from the Research Corporation under the Scialog Collaborative Award (TDA) ID# 24231, 
+Eigentools was developed with support from the Research Corporation under the Scialog Collaborative Award (TDA) ID# 24231 and from NASA under LWS Grant No. NNX16AC92G and SSW Grant No. 80NSSC19K0026.
 
 # References
 
