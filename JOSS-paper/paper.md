@@ -43,12 +43,12 @@ date: 21 December 2020
 bibliography: paper.bib
 ---
 # Summary
-In numerous fields of science, engineering, and applied mathematics, eigenvalue analysis is an invaluable tool. It is used to define bases in quantum mechanics, to find orbitals in chemistry, assess the stability of vibrations in fluids and solids, to understand the stability and robustness of timestepping schemes, to understand material properties in the Earth and Sun via seismological techniques, among a plethora of other uses. Concomitantly,  nearly every computational package contains tools for computing eigenvalues for both sparse and dense matrices. However, studying these eigenvalues is not without significant peril: many important systems, particularly discretized partial differential equations (PDEs), are poorly conditioned and not all the numerical eigenvalues reported by such routines are reliable. Additionally, it is far from trivial to start with a set of PDEs and *construct* a discretized matrix in the first place. In order to solve these problems, we present `eigentools`, a Python package that extends the eigenvalue problem (EVP) capabilities of the Dedalus project [@PhysRevResearch.2.023068] to provide a complete analysis toolkit for EVPs.
+In numerous fields of science, engineering, and applied mathematics, eigenvalue analysis is an invaluable tool. It is used to define bases in quantum mechanics, to find orbitals in chemistry, assess the stability of vibrations in fluids and solids, to understand the stability and robustness of time stepping schemes, to understand material properties in the Earth and Sun via seismological techniques, among a plethora of other uses. Concomitantly,  nearly every computational package contains tools for computing eigenvalues for both sparse and dense matrices. However, studying these eigenvalues is not without significant peril: many important systems, particularly discretized partial differential equations (PDEs), are poorly conditioned and not all the numerical eigenvalues reported by such routines are reliable. Additionally, it is far from trivial to start with a set of PDEs and *construct* a discretized matrix in the first place. In order to solve these problems, we present `eigentools`, a Python package that extends the eigenvalue problem (EVP) capabilities of the Dedalus project [@PhysRevResearch.2.023068] to provide a complete analysis toolkit for EVPs.
 
 # Statement of need
 Linear stability analysis of PDEs is a fundamental tool in chaotic dynamics, fluid dynamics, biophysics, and many other scientific disciplines. `eigentools` provides a convenient, parallelized interface for both modal and non-modal stability analyses for nearly arbitrary systems of PDEs.
 
-In addition to the traditional venues for eigenvalue analysis such as fluid and solid mechanics, a wide variety of new continuum models is emerging from soft condensed matter, particularly the study of active matter [see @doi:10.1146/annurev-conmatphys-031119-050611; and @2020NatRP.2.181S for recent reviews]. These models are encoded as PDEs and evaluating their stability is important for understanding the rich behavior they exhibit. `eigentools` provides a toolkit that requires very little user input in order to take a model, find robust eigenvalues and eigemodes, and find critical parameter values for stability. The only thing a user needs to do is find a state to linearize about and cast the PDE in that form. Once the linear PDE is derived, one constructs a Dedalus `EigenvalueProblem` object, and passes that to `eigentools`. `eigentools` provides robust spurious eigenvalue rejection [@boyd2001chebyshev], spectrum and eigenmode visualization, $\epsilon-$pseudospectra, and the ability to project a given eigenmode onto an 2- or 3-dimensional domain and save it as a Dedalus-formatted HDF5 file to use as an initial condition for an initial value problem (i.e. simulation) of the same system. 
+In addition to the traditional venues for eigenvalue analysis such as fluid and solid mechanics, a wide variety of new continuum models is emerging from soft condensed matter, particularly the study of active matter [see @doi:10.1146/annurev-conmatphys-031119-050611; and @2020NatRP.2.181S for recent reviews]. These models are encoded as PDEs and evaluating their stability is important for understanding the rich behavior they exhibit. `eigentools` provides a toolkit that requires very little user input in order to take a model, find robust eigenvalues and eigenmodes, and find critical parameter values for stability. The only thing a user needs to do is find a state to linearize about and cast the PDE in that form. Once the linear PDE is derived, one constructs a Dedalus `EigenvalueProblem` object, and passes that to `eigentools`. `eigentools` provides robust spurious eigenvalue rejection [@boyd2001chebyshev], spectrum and eigenmode visualization, $\epsilon-$pseudospectra, and the ability to project a given eigenmode onto an 2- or 3-dimensional domain and save it as a Dedalus-formatted HDF5 file to use as an initial condition for an initial value problem (i.e. simulation) of the same system. 
 
 # Critical Parameter finding
 One of the original motivations for `eigentools` was to quickly and easily find critical parameters for eigenvalue stability problems.
@@ -61,7 +61,7 @@ It then interpolates to find the zero crossings of one parameter, and finally mi
 \autoref{fig:mri} demonstrates three core features of `eigentools`: the ability to find critical parameters, the ability to use sparse and dense eigenvalue solvers, and the ability to reject spurious eigenvalues.
 In the right panel, the growth rate of the magnetorotational instability (defined as the positive real part of the eigenvalue $\sigma$) is plotted on a $20 \times 20$ grid of magnetic Reynolds number $\mathrm{Rm}$ and wavenumber $Q$, finding the critical values $\mathrm{Rm_c} = 4.88, Q = 0.747$; in \autoref{fig:mri}, we used 4 cores each performing 100 *sparse* eigenvalue solves finding the 15 modes with $\sigma$ closest to zero.
 The middle panel shows the spectrum at the critical parameters; this was solved using a *dense* eigenvalue solver to find all modes.
-The unstable mode is a rotationally modified Alfv\'en wave highlighted in red.
+The unstable mode is a rotationally modified Alfven\'en wave highlighted in red.
 Finally, the rightmost panel shows a plot of the **inverse drift ratio** for both ordinal and nearest comparisons.
 When `eigentools` solves an EVP, by default it will perform mode rejection by solving the same problem twice, once at 1.5 times the resolution (this is user configurable).
 In order to ascertain which modes are good, the inverse drift ratio is computed one of two ways.
@@ -73,7 +73,7 @@ By increasing the resolution, the number of resolved modes for each family incre
 
 # Output and creation of initial conditions
 
-![Rayleigh-Benard convection. From left to right: buoyancy (colormap) and velocities (arrows) for the most unstable eigenmode at $\mathrm{Ra} = 10^5$, buoyancy and velocites for the non-linear steady state for that eigenmode after evolution via an initial value problem in Dedalus, time evolution of RMS buoyancy.\label{fig:rbc}](rbc_evp_ivp.png)
+![Rayleigh-Benard convection. From left to right: buoyancy (colormap) and velocities (arrows) for the most unstable eigenmode at $\mathrm{Ra} = 10^5$, buoyancy and velocities for the non-linear steady state for that eigenmode after evolution via an initial value problem in Dedalus, time evolution of RMS buoyancy.\label{fig:rbc}](rbc_evp_ivp.png)
 
 \autoref{fig:rbc} highlights `eigentools` output capability. We solve the EVP at $\mathrm{Ra} = 10^5$ for Rayleigh-Benard convection between two no-slip plates using `eigentools` at a resolution of $n_z = 16$. 
 We then output it on a 2-D domain of $(n_x, n_z) = (16,64)$ and load that into a Dedalus initial value problem (IVP) solver using the full, non-linear equations for Rayleigh-Benard convection.
@@ -89,11 +89,11 @@ $$\mathbf{L} \mathbf{x} = \lambda \mathbf{x}.$$
 We have implemented a newly developed algorithm [@doi:10.1137/15M1055012] to allow the computation of pseudospectra for differential-algebraic equation (DAE) systems.
 To our knowledge, this is the first publicly available system for computing $\epsilon-$pseudospectra for arbitrary DAEs.
 
-![Spectrum, pseudospectrum, and four representative eigenmodes for the Orr-Sommerfeld problem, expressed in primitive variables $(u,v)$. The eigenmodes correspond to the eigenvalues highlighted in orange in the middle panel. Pseudospectrum contours are labeled by n, representing $10^{n}$.\label{fig:os_pseudo}](pseudospectra.png)
+![Spectrum, pseudospectrum, and four representative eigenmodes for the Orr-Sommerfeld problem, expressed in primitive variables $(u,v)$. The eigenmodes correspond to the eigenvalues highlighted in orange in the middle panel. Pseudospectra contours are labeled by n, representing $10^{n}$.\label{fig:os_pseudo}](pseudospectra.png)
 
 \autoref{fig:os_pseudo} shows an example pseudospectrum, its corresponding spectrum, and four representative eigenvectors for the classic Orr-Sommerfeld problem in hydrodynamic stability theory. 
 As a twist on the standard problem, we demonstrate Dedalus and `eigentools` ability to solve the problem using the standard Navier-Stokes equations linearized about a background velocity, rather than in the traditional, single fourth-order equation for wall-normal velocity. This is not possible without using the generalized eigenvalue pseudospectra algorithm implemented above.
-Note that for the four eigenvectors, we plot $u$ and $w$, the streamwise and wall-normal directions, respectively, rather than $w$ and $\eta$, the vorticity as would be the case in the reduced Orr-Sommerfeld form. The solid and dashed lines represent the real and imaginary parts of the eigenvectors, respectively.
+Note that for the four eigenvectors, we plot $u$ and $w$, the stream wise and wall-normal directions, respectively, rather than $w$ and $\eta$, the vorticity as would be the case in the reduced Orr-Sommerfeld form. The solid and dashed lines represent the real and imaginary parts of the eigenvectors, respectively.
 
 # Example
 Here we present an script that computes the spectra and pseudospectra for the classic Orr-Sommerfeld problem. 
@@ -163,14 +163,37 @@ plt.savefig("OS_pseudospectra.png", dpi=300)
 ```
 
 # Related Work
-There are a few other packages dedicated to the automatic construction of eigenvalue problems, including [Chebfun](https://www.chebfun.org/), which can also produce pseudospectra. Chebfun, while itself released under the standard 3-Clause BSD license, is written in the proprietary MATLAB langauge.
-For computing spectra and pseudospectra for existing matrices, the venerable [`EigTool`](https://github.com/eigtool/eigtool) package is another open-source option again writtein in MATLAB.
+There are a few other packages dedicated to the automatic construction of eigenvalue problems, including [Chebfun](https://www.chebfun.org/), which can also produce pseudospectra. Chebfun, while itself released under the standard 3-Clause BSD license, is written in the proprietary MATLAB language.
+For computing spectra and pseudospectra for existing matrices, the venerable [`EigTool`](https://github.com/eigtool/eigtool) package is another open-source option again written in MATLAB.
 It does not feature parallelism nor the ability to construct eigenvalue problems.
 `EigTool` has also been ported to the open-source Julia language in the [`Pseudospectra.jl`](https://github.com/RalphAS/Pseudospectra.jl) package.
 
 `eigentools` has been used in several papers including @2017ApJ.841.1C; @2017ApJ.841.2C; @2020RSPSA.47690622O; @PhysRevResearch.2.023068; and @2020arXiv201112300L.
 
-# Acknowledgements
+# Acknowledgments
 Eigentools was developed with support from the Research Corporation under award Scialog Collaborative Award (TDA) ID# 24231.
 
 # References
+
+<!--  LocalWords:  eigentools pseudospectra Oishi orcid Anders Vasil
+ -->
+<!--  LocalWords:  Lecoanet CIERA EVP Dedalus parallelized eigenmodes
+ -->
+<!--  LocalWords:  linearize PDE EigenvalueProblem eigenmode HDF MPI
+ -->
+<!--  LocalWords:  CriticalFinder Eigenproblem mathbb autoref mri RMS
+ -->
+<!--  LocalWords:  magnetorotational mathrm wavenumber Alfven boyd os
+ -->
+<!--  LocalWords:  chebyshev Benard colormap rbc IVP mathcal mathbf
+ -->
+<!--  LocalWords:  DAE DAEs pseudospectrum Sommerfeld Navier pyplot
+ -->
+<!--  LocalWords:  vorticity matplotlib plt dedalus de numpy np uz wz
+ -->
+<!--  LocalWords:  umean umeanz dx dt Az bc EP psize linspace imag ps
+ -->
+<!--  LocalWords:  calc xlim xlabel ylabel savefig png Chebfun jl TDA
+ -->
+<!--  LocalWords:  EigTool arXiv Scialog
+ -->
