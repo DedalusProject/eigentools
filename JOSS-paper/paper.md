@@ -168,60 +168,6 @@ For computing spectra and pseudospectra for existing matrices, the venerable [`E
 It does not feature parallelism nor the ability to construct eigenvalue problems.
 `EigTool` has also been ported to the open-source Julia language in the [`Pseudospectra.jl`](https://github.com/RalphAS/Pseudospectra.jl) package.
 
-
-<!-- # Performace -->
-
-<!-- Using Orr-Somerfeld test problem  -->
-
-<!-- OMP parallelization leavitt -->
-<!-- real	1m9.802s -->
-<!-- user	10m13.894s -->
-<!-- sys	19m24.646s -->
-
-<!-- Single core no OMP leavitt -->
-<!-- real	0m48.659s -->
-<!-- user	0m43.606s -->
-<!-- sys	0m0.947s -->
-
-<!-- 4 core MPI no OMP leavitt -->
-<!-- real	0m28.251s -->
-<!-- user	0m52.939s -->
-<!-- sys	0m4.548s -->
-
-<!-- openblas OMP 8 threads (default OMP_NUM_THREADS) -->
-<!-- 2020-12-07 14:43:18,278 __main__ 0/1 INFO :: grid generation time:   68.02126 sec -->
-
-<!-- openblas OMP 4 threads (default OMP_NUM_THREADS) -->
-<!-- 2020-12-07 14:45:15,796 __main__ 0/1 INFO :: grid generation time:   34.12971 sec -->
-
-<!-- openblas OMP 1 threads (default OMP_NUM_THREADS) -->
-<!-- 2020-12-07 14:46:19,026 __main__ 0/1 INFO :: grid generation time:   29.15382 sec -->
-
-<!-- MKL 1 threads (default OMP_NUM_THREADS) -->
-<!-- 2020-12-07 14:41:32,328 __main__ 0/1 INFO :: grid generation time:   30.47119 sec -->
-
-<!-- MKL dense -->
-<!-- 2020-12-07 14:50:12,748 __main__ 0/1 INFO :: grid generation time:  148.12831 sec -->
-
-
-
-<!-- # Mathematics -->
-
-<!-- Single dollars ($) are required for inline mathematics e.g. $f(x) = e^{\pi/x}$ -->
-
-<!-- Double dollars make self-standing equations: -->
-
-<!-- $$\Theta(x) = \left\{\begin{array}{l} -->
-<!-- 0\textrm{ if } x < 0\cr -->
-<!-- 1\textrm{ else} -->
-<!-- \end{array}\right.$$ -->
-
-<!-- You can also use plain \LaTeX for equations -->
-<!-- \begin{equation}\label{eq:fourier} -->
-<!-- \hat f(\omega) = \int_{-\infty}^{\infty} f(x) e^{i\omega x} dx -->
-<!-- \end{equation} -->
-<!-- and refer to \autoref{eq:fourier} from text. -->
-
 `eigentools` has been used in several papers including @2017ApJ.841.1C; @2017ApJ.841.2C; @2020RSPSA.47690622O; @PhysRevResearch.2.023068; and @2020arXiv201112300L.
 
 # Acknowledgements
