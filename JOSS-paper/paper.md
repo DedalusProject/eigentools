@@ -100,7 +100,7 @@ The pseudospectrum shows the sensitivity of the eigenvalue $\lambda$ to a parame
 \begin{equation}
 L \to L + L', \qquad M \to M + M', \qquad \text{where} \qquad ||L'||, \ || M' || \ < \varepsilon.
 \end{equation}
-The notion of pseudospectra relies on a particular choice of operator norm. `eigentools` allow the user to implement any norm useful for their particular problem, provided it is inherited from an inner product on the underlying vector space:
+The notion of pseudospectra relies on a particular choice of operator norm. `eigentools` allow the user to implement any norm useful for their particular problem, provided it is inherited from an inner product on the underlying vector space $V$:
 \begin{equation}
 ||L|| \ = \ \sup_{x\in V} \sqrt{\frac{\left< Lx , L x\right>}{\left<x,x\right>}}.
 \end{equation}
@@ -145,10 +145,10 @@ os.add_bc('right(w) = 0')
 os.add_bc('left(u) = 0')
 os.add_bc('right(u) = 0')
 
-os_EP = Eigenproblem(os) 
+os_EP = Eigenproblem(os) # the main eigentools interface
 
-# define the energy norm 
-def energy_norm(Q1, Q2):
+# define the energy inner product
+def energy_ip(Q1, Q2):
     u1, w1 = Q1['u'], Q1['w']
     u2, w2 = Q2['u'], Q2['w']
     
@@ -160,7 +160,7 @@ k = 100 # size of invariant subspace
 psize = 100 # number of points in real, imaginary points
 real_points = np.linspace(0,1, psize)
 imag_points = np.linspace(-1,0.1, psize)
-os_EP.calc_ps(k, (real_points, imag_points), inner_product=energy_norm)
+os_EP.calc_ps(k, (real_points, imag_points), inner_product=energy_ip)
 
 # plot
 P_CS = plt.contour(os_EP.ps_real,os_EP.ps_imag, np.log10(os_EP.pseudospectrum),
