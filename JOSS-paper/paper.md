@@ -73,19 +73,22 @@ When `eigentools` solves an EVP, by default it will perform mode rejection by so
 In order to ascertain which modes are good, the inverse drift ratio is computed one of two ways.
 For simple problems with only one mode family, one can use the *ordinal* method in which the eigenvalues are compared in sorted order.
 However, the magnetorotational instability has *multiple wave families*.
-By increasing the resolution, the number of resolved modes for each family increases; because of this, one must compare the drift ratios of the *nearest* eigenvalue [for details, see @boyd2001chebyshev].
+By increasing the resolution, the number of resolved modes for each family increases; because of this, one must compare the drift ratios of the *nearest* eigenvalue [for details, see Chapter 7 of @boyd2001chebyshev].
 The right panel of \autoref{fig:mri} shows both ordinal and nearest drift ratios; by the ordinal criterion, all eigenvalues would be rejected, despite the fact that many eigenvalues are robust.
 
 ![Magnetorotational instability. From left to right: growth rates in the $\mathrm{Rm}-Q$ plane, Black line and circles show zero-growth contour. The MRI spectrum at the critical parameters. Inverse drift ratios for modes shown in the spectrum. Those below $10^6$ are rejected according to nearest (blue) and ordinal (orange) criteria. For this problem, the nearest criterion must be used.\label{fig:mri}](mri.png)
 
 # Output and creation of initial conditions
 
-![Rayleigh-Benard convection. From left to right: buoyancy (colormap) and velocities (arrows) for the most unstable eigenmode at $\mathrm{Ra} = 10^5$, buoyancy and velocities for the non-linear steady state for that eigenmode after evolution via an initial value problem in Dedalus, time evolution of RMS buoyancy.\label{fig:rbc}](rbc_evp_ivp.png)
+`eigentools` can output eigenmodes directly in the Dedalus HDF5 data format, meaning that the eigenmodes need no translation to be used as an initial condition for a non-linear simulation.
+\autoref{fig:rbc} highlights this capability. We solve an EVP at $\mathrm{Ra} = 10^6$ for Rayleigh-Benard convection between two no-slip plates using `eigentools` at a resolution of $n_z = 32$, and select the most unstable mode. 
+We then project that mode on a 2-D domain of $(n_x, n_z) = (32,32)$, write it to disk, and load the data into a Dedalus initial value problem (IVP) solver using the full, non-linear equations for Rayleigh-Benard convection.
 
-\autoref{fig:rbc} highlights `eigentools` output capability. We solve the EVP at $\mathrm{Ra} = 10^5$ for Rayleigh-Benard convection between two no-slip plates using `eigentools` at a resolution of $n_z = 16$. 
-We then output it on a 2-D domain of $(n_x, n_z) = (16,64)$ and load that into a Dedalus initial value problem (IVP) solver using the full, non-linear equations for Rayleigh-Benard convection.
+![Rayleigh-Benard convection. From left to right: buoyancy (colormap) and velocities (arrows) for the most unstable eigenmode at $\mathrm{Ra} = 10^6$, buoyancy and velocities for the non-linear steady state for that eigenmode after evolution via an initial value problem in Dedalus, time evolution of RMS buoyancy.\label{fig:rbc}](rbc_evp_ivp.png)
+
 Using Dedalus's ability to change parameters and resolutions on the fly, we then run IVP at with a resolution of $(512, 64)$ until it reaches a non-linear steady state.
-In the left panel of \autoref{fig:rbc}, we see excellent agreement between the growth rate from the non-linear IVP and the initial eigenvalue until non-linearity begins to become important around $t\approx 0.02$.
+The IVP in \autoref{fig:rbc} was run in parallel on 32 cores; it took roughly 1 hour and 19 minutes to reach the steady non-linear solution.
+In the right panel of \autoref{fig:rbc}, we see excellent agreement between the growth rate from the non-linear IVP and the initial eigenvalue until non-linearity begins to become important around $t\approx 0.01$.
 
 # Pseudospectra
 
