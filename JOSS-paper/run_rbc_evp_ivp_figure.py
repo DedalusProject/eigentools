@@ -59,19 +59,18 @@ if __name__=="__main__":
     kc = 3.117  #horizontal wavenumber
     Rac = 1708. #Rayleigh number, rigid-rigid is 1708
     Lx = 2*np.pi/kc
-
+    Ra = 1e6
     with Sync(comm) as sync:
         if sync.comm.rank == 0:
-            z_evp = de.Chebyshev('z',64, interval=(0, 1))
+            z_evp = de.Chebyshev('z',32, interval=(0, 1))
             d_evp = de.Domain([z_evp],comm=MPI.COMM_SELF)
             rb_evp = rbc_problem('EVP',d_evp)
             EP = eig.Eigenproblem(rb_evp)
 
-            x = de.Fourier('x', 64, interval = (0, Lx)) 
-            z = de.Chebyshev('z',64, interval=(0, 1))
+            x = de.Fourier('x', 32, interval = (0, Lx)) 
+            z = de.Chebyshev('z',32, interval=(0, 1))
             output_domain = de.Domain([x,z],grid_dtype=np.float64,comm=MPI.COMM_SELF)
 
-            Ra = 1e5
             logger.info("projecting mode at Ra = {}, k = {}".format(Ra,kc))
             growth, index, freq = EP.growth_rate(parameters={'k':kc,'Ra':Ra},sparse=False)
 
