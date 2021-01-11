@@ -91,7 +91,7 @@ Using Dedalus's ability to change parameters and resolutions on the fly, we then
 
 ![Rayleigh-Benard convection. From left to right: buoyancy (colormap) and velocities (arrows) for the most unstable eigenmode at $\mathrm{Ra} = 10^6$, buoyancy and velocities for the non-linear steady state for that eigenmode after evolution via an initial value problem in Dedalus, time evolution of RMS buoyancy.\label{fig:rbc}](rbc_evp_ivp.png)
 
-The IVP in \autoref{fig:rbc} was run in parallel on 32 cores; it took roughly 1 hour and 19 minutes to reach the steady non-linear solution.
+The IVP in \autoref{fig:rbc} was run in parallel on 32 cores.
 In the right panel of \autoref{fig:rbc}, we see excellent agreement between the growth rate from the non-linear IVP and the initial eigenvalue until non-linearity begins to become important around $t\approx 0.01$.
 
 # Pseudospectra
@@ -101,7 +101,7 @@ The eigentools package can also solve for the $\varepsilon$--pseudospectra (Tref
 L x = \lambda M x
 \end{equation}
 using the recent algorithm given by @doi:10.1137/15M1055012.
-To our knowledge, this is the first open-source system for computing $\epsilon-$pseudospectra for arbitrary generalized EVPs, including those with singular $M$ matrices.
+To our knowledge, this is the first open-source system for computing $\varepsilon-$pseudospectra for arbitrary generalized EVPs, including those with singular $M$ matrices.
 Such $M$ arise quite commonly in the solution of differential-algebraic equations, which occur any time there is a time-invariant equation in the system ($\nabla \cdot \mathbf{u} = 0$, for example).
 The pseudospectrum shows the sensitivity of the eigenvalue $\lambda$ to a parameter $\varepsilon$ for bounded perturbations in the underlying operators
 \begin{equation}
@@ -213,7 +213,7 @@ Eigentools was developed with support from the Research Corporation under the Sc
  -->
 <!--  LocalWords:  EigTool arXiv Scialog Alfvén varepsilon Trefethen
  -->
-<!--  LocalWords:  Embree nabla cdot qquad sqrt frac Lx arange
+<!--  LocalWords:  Embree nabla cdot qquad sqrt frac Lx arange ip LWS
  -->
-<!--  LocalWords:  linestyles
+<!--  LocalWords:  linestyles NNX NSSC
  -->
