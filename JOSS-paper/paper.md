@@ -1,5 +1,5 @@
 ---
-title: 'eigentools: A Python package for studying eigenvalue problems with an emphasis on stability'
+title: 'eigentools: A Python package for studying differential eigenvalue problems with an emphasis on robustness'
 tags:
   - eigenvalue problems
   - partial differential equations
@@ -49,18 +49,19 @@ date: 21 December 2020
 bibliography: paper.bib
 ---
 # Summary and Statement of need
-In numerous fields of science, engineering, and applied mathematics, eigenvalue analysis is an invaluable tool. 
-Nearly every computational package contains tools for computing eigenvalues for both sparse and dense matrices. However, studying these eigenvalues is not without significant peril: many important systems, particularly discretized partial differential equations (PDEs), are poorly conditioned and many of the numerical eigenvalues reported by such routines are unreliable. Additionally, it is far from trivial to start with a set of PDEs and *construct* a discretized matrix in the first place. In order to solve these problems, we present `eigentools`, a Python package that extends the eigenvalue problem (EVP) capabilities of the Dedalus project [@PhysRevResearch.2.023068] to provide a complete analysis toolkit for EVPs.
+Linear stability analysis of partial differential equations (PDEs) is a fundamental tool in chaotic dynamics, fluid dynamics, biophysics, and many other scientific disciplines. 
+These analyses require solving eigenvalue problems.
+However, studying these eigenvalues is not without significant peril: discretized PDEs are poorly conditioned and many of the numerical eigenvalues reported by standard solvers are unreliable. Additionally, it is far from trivial to start with a set of PDEs and *construct* a matrix discretization in the first place. In order to solve these problems, we present `eigentools`, a Python package that extends the eigenvalue problem (EVP) capabilities of the Dedalus Project [@PhysRevResearch.2.023068] to provide a complete analysis toolkit for EVPs.
 
-Linear stability analysis of PDEs is a fundamental tool in chaotic dynamics, fluid dynamics, biophysics, and many other scientific disciplines. `eigentools` provides a convenient, parallelized interface for both modal and non-modal stability analyses for nearly arbitrary systems of PDEs.
-It provides a toolkit requiring very little user input to take a model, find robust eigenvalues and eigenmodes, and find critical parameter values for stability. The only thing a user needs to do is find a state to linearize about and write the PDE in terms of it. Once the linear PDE is derived, one constructs a Dedalus `EigenvalueProblem` object, and passes that to `eigentools`. `eigentools` provides robust spurious eigenvalue rejection [@boyd2001chebyshev], spectrum and eigenmode visualization, $\varepsilon-$pseudospectra, and the ability to project a given eigenmode onto an 2- or 3-dimensional domain and save it as a Dedalus-formatted HDF5 file to use as an initial condition for a non-linear simulation of the same system. 
+`eigentools` provides a convenient, parallelized interface for both modal and non-modal stability analyses for nearly arbitrary systems of PDEs.
+It provides a toolkit that makes it very easy to take a model, find robust eigenvalues and eigenmodes, and find critical parameter values for stability. The only thing a user needs to do is find a state to linearize about. One constructs a Dedalus `EigenvalueProblem` object for the PDE linearized about the chosen backgroud, and passes that to `eigentools`. `eigentools` provides robust spurious eigenvalue rejection [@boyd2001chebyshev], spectrum and eigenmode visualization, $\varepsilon-$pseudospectra, and the ability to project a given eigenmode onto an 2- or 3-dimensional domain and save it as a Dedalus-formatted HDF5 file to use as an initial condition for a non-linear simulation of the same system. 
 
 # Robust Eigenvalues and Finding Critical Parameters
-The core `eigentools` object, `Eigenproblem`, provides a simple interface to accurately solve a Dedalus eigenvalue problem using sparse or dense methods, to find a user-defined growth rate.
+The core `eigentools` class, `Eigenproblem`, provides a simple interface to accurately solve a Dedalus eigenvalue problem using sparse or dense methods.
 `Eigenproblem` allows the user to choose how "growth" is defined via custom functions of the eigenvalues returned by the solver; this allows the use of positive imaginary parts (e.g. $e^{\sigma t}$, $\sigma \in \mathbb{C}$), negative real parts (e.g. $e^{i(k x - \omega t)}$, $\omega \in \mathbb{C}$), or any other choice.
 The growth rate is defined as the robust eigenvalue with the highest growth rate.
 `Eigenproblem` also has simple tools to plot all components of eigenmodes corresponding to a selected eigenvalue.
-In order to find robust eigenvalues, `eigentools` performs *mode rejection* by solving the same problem twice, once at a user specifiable multiple (1.5 by default) of the resolution.
+In order to find robust eigenvalues, `eigentools` performs *mode rejection* by solving the same problem twice, once at a user specifiable multiple (1.5 by default) of the original resolution.
 In order to ascertain which modes are good, we calculate a figure of merit called the **inverse drift ratio** one of two ways [for details, see Chapter 7 of @boyd2001chebyshev].
 For simple problems with only one mode family, one can use the *ordinal* method in which the eigenvalues are compared in sorted order.
 However, many important problems have *multiple wave families*.
@@ -68,7 +69,7 @@ By increasing the resolution, the number of resolved modes for each family incre
 The right panel of \autoref{fig:mri} shows both ordinal and nearest drift ratios; by the ordinal criterion, all eigenvalues would be rejected, despite the fact that many eigenvalues are robust.
 This shows that for this problem, one must use the nearest method.
 
-![Magnetorotational instability. From left to right: growth rates in the $\mathrm{Rm}-Q$ plane, Black line and circles show zero-growth contour. The MRI spectrum at the critical parameters. Inverse drift ratios for modes shown in the spectrum. Those below $10^6$ are rejected according to nearest (blue) and ordinal (orange) criteria. For this problem, the nearest criterion must be used.\label{fig:mri}](mri.png)
+![Magnetorotational instability. From left to right: growth rates in the $\mathrm{Rm}-Q$ plane; black line and circles show zero-growth contour. The MRI spectrum at the critical parameters. Inverse drift ratios for modes shown in the spectrum. Those below $10^6$ are rejected according to nearest (blue) and ordinal (orange) criteria. For this problem, the nearest criterion must be used.\label{fig:mri}](mri.png)
 
 One of the original motivations for `eigentools` was to quickly and easily find critical parameters for eigenvalue stability problems.
 Critical parameters are those at which the fastest growing mode has zero growth rate.
@@ -78,7 +79,7 @@ It then interpolates to find the zero crossings of one parameter, and finally mi
 `CriticalFinder` also provides simple visualization tools, root polishing algorithms to further refine the critical values, and the ability to save and load the grid of eigenvalues.
 
 \autoref{fig:mri} demonstrates three core features of `eigentools`: the ability to find critical parameters, the ability to use sparse and dense eigenvalue solvers, and the ability to reject spurious eigenvalues.
-In the left panel, the growth rate of the magnetorotational instability (defined as the positive real part of the eigenvalue $\sigma$) is plotted on a $20 \times 20$ grid of magnetic Reynolds number $\mathrm{Rm}$ and wavenumber $Q$, finding the critical values $\mathrm{Rm_c} = 4.88, Q = 0.747$; in \autoref{fig:mri}, we used 4 cores each performing 100 *sparse* eigenvalue solves finding the 15 modes with $\sigma$ closest to zero.
+In the left panel, the growth rate of the magnetorotational instability (defined as the positive real part of the eigenvalue $\sigma$) is plotted on a $20 \times 20$ grid of magnetic Reynolds number $\mathrm{Rm}$ and wavenumber $Q$, finding the critical values $\mathrm{Rm_c} = 4.88, Q = 0.747$ [@2017ApJ.841.1C]; in \autoref{fig:mri}, we used 4 cores each performing 100 *sparse* eigenvalue solves finding the 15 modes with $\sigma$ closest to zero.
 The middle panel shows the spectrum at the critical parameters; this was solved using a *dense* eigenvalue solver to find all modes.
 The unstable mode is a rotationally modified Alfvén wave highlighted in red.
 Finally, the rightmost panel shows a plot of the inverse drift ratio $1/\delta$ for both ordinal and nearest comparisons.
@@ -96,25 +97,25 @@ In the right panel of \autoref{fig:rbc}, we see excellent agreement between the 
 
 # Pseudospectra
 
-The eigentools package can also solve for the $\varepsilon$--pseudospectra (Trefethen \& Embree, 2005) of *generalized* eigenvalue problems of the form
+The eigentools package can also solve for the $\varepsilon$--pseudospectra [@trefethen2005spectra] of *generalized* eigenvalue problems of the form
 \begin{equation}
 L x = \lambda M x
 \end{equation}
 using the recent algorithm given by @doi:10.1137/15M1055012.
 To our knowledge, this is the first open-source system for computing $\varepsilon-$pseudospectra for arbitrary generalized EVPs, including those with singular $M$ matrices.
-Such $M$ arise quite commonly in the solution of differential-algebraic equations, which occur any time there is a time-invariant equation in the system ($\nabla \cdot \mathbf{u} = 0$, for example).
+Such $M$ arise quite commonly in the solution of temporally differential-algebraic equations, which occur any time there are algebraic equations in the system such as linear constraints (e.g. $\nabla \cdot \mathbf{u} = 0$) or boundary conditions. 
 The pseudospectrum shows the sensitivity of the eigenvalue $\lambda$ to a parameter $\varepsilon$ for bounded perturbations in the underlying operators
 \begin{equation}
 L \to L + L', \qquad M \to M + M', \qquad \text{where} \qquad ||L'||, \ || M' || \ < \varepsilon.
 \end{equation}
-The notion of pseudospectra relies on a particular choice of operator norm. `eigentools` allow the user to implement any norm useful for their particular problem, provided it is inherited from an inner product on the underlying vector space $V$:
+The notion of pseudospectra relies on a particular choice of operator norm; in fluid dynamics, this is often the energy inner product. `eigentools` allow the user to implement any norm useful for their particular problem, provided it is induced by an inner product on the underlying vector space $V$:
 \begin{equation}
 ||L|| \ = \ \sup_{x\in V} \sqrt{\frac{\left< Lx , L x\right>}{\left<x,x\right>}}.
 \end{equation}
 
-The pseudospectra identifies the robust parts of the spectrum. Pseudospectra have numerous applications, including non-modal stability analysis in fluid dynamics [@schmid2012stability], locating topological states [@LORING2015383], and helping to understanding the unusual properties of $\mathcal{PT}$--symmetric quantum mechanics [@doi:10.1063/1.4934378]. 
+The pseudospectrum identifies the robust parts of the spectrum. Pseudospectra have numerous applications, including non-modal stability analysis in fluid dynamics [@schmid2012stability], locating topological states [@LORING2015383], and helping to understanding the unusual properties of $\mathcal{PT}$--symmetric quantum mechanics [@doi:10.1063/1.4934378]. 
 
-![Spectrum, pseudospectrum, and four representative eigenmodes for the Orr-Sommerfeld problem, expressed in primitive variables $(u,v)$. The eigenmodes correspond to the eigenvalues highlighted in orange in the middle panel. Pseudospectra contours are labeled by n, representing $10^{n}$.\label{fig:os_pseudo}](pseudospectra.png)
+![Spectrum, pseudospectrum, and four representative eigenmodes for the Orr-Sommerfeld problem, expressed in primitive variables $(u,v)$. The eigenmodes correspond to the eigenvalues highlighted in orange in the middle panel; eigenvalue rejection insures the oscillations in the modes are well-resolved. Pseudospectra contours are labeled by n, representing $10^{n}$.\label{fig:os_pseudo}](pseudospectra.png)
 
 \autoref{fig:os_pseudo} shows an example pseudospectrum, its corresponding spectrum, and four representative eigenvectors for the classic Orr-Sommerfeld problem in hydrodynamic stability theory. 
 As a twist on the standard problem, we demonstrate Dedalus and `eigentools` ability to solve the problem using the standard Navier-Stokes equations linearized about a background velocity, rather than in the traditional, single fourth-order equation for wall-normal velocity. This is not possible without using the generalized eigenvalue pseudospectra algorithm implemented above.
