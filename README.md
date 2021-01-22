@@ -23,7 +23,7 @@ pip install eigentools
 
 ## Documentation
 
-API Documentation can be found at [Read the Docs](eigentools.readthedocs.io).
+API Documentation can be found at [Read the Docs](https://eigentools.readthedocs.io/).
 
 ## Developers
 The core development team consists of 
