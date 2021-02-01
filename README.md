@@ -5,7 +5,7 @@ Eigentools is a set of tools for studying linear eigenvalue problems. The underl
 * automatic rejection of unresolved eigenvalues
 * simple plotting of specified eigenmodes
 * simple plotting of spectra
-* computation of $\epsilon$-pseudospectra for any Differential-Algebraic Equations with **user-specifiable norms**
+* computation of pseudospectra for any Differential-Algebraic Equations with **user-specifiable norms**
 * tools to find critical parameters for linear stability analysis
 * ability to project eigenmode onto 2- or 3-D domain for visualization
 * ability to output projected eigenmodes as Dedalus-formatted HDF5 file to be used as initial conditions for Initial Value Problems
@@ -13,17 +13,11 @@ Eigentools is a set of tools for studying linear eigenvalue problems. The underl
 
 ## Installation
 
-Eigentools requires [Dedalus](http://dedalus-project.org), which can be installed along with all of its dependencies using conda via [its install script](https://dedalus-project.readthedocs.io/en/latest/pages/installation.html#conda-installation-recommended). 
-
-Once Dedalus is installed, eigentools can be pip installed in the same conda environment via
-
-```
-pip install eigentools
-```
+Eigentools can be `pip` installed, though it requires [Dedalus](http://dedalus-project.org/), which has non-`pip` installable dependencies. See the [installation instructions](https://eigentools.readthedocs.io/en/latest/pages/installation.html) for details.
 
 ## Documentation
 
-API Documentation can be found at [Read the Docs](https://eigentools.readthedocs.io/).
+Documentation (including detailed API documentation) can be found at [Read the Docs](https://eigentools.readthedocs.io/).
 
 ## Developers
 The core development team consists of 
