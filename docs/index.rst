@@ -21,7 +21,6 @@ Contents
 
    pages/installation
    pages/getting_started
-   Eigentools API reference <autoapi/eigentools/index>
 
 Example notebooks
 -----------------
@@ -31,6 +30,14 @@ Example notebooks
 
    Example 1: Orr-Somerfield pseudospectra </notebooks/Orr Somerfeld pseudospectra.ipynb>
    Example 2: Mixed Layer instability </notebooks/Mixed Layer Instability.ipynb>
+
+API reference
+-------------
+
+.. toctree::
+   :maxdepth: 2
+              
+   Eigentools API reference <autoapi/eigentools/index>
 
 Developers
 ==========
