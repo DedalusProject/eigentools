@@ -158,7 +158,7 @@ class Eigenproblem():
             self.evalues_high = self.hires_solver.eigenvalues
             self._reject_spurious()
         else:
-            self.evalues = self.evalues_lowres
+            self.evalues = self.evalues_low
             self.evalues_index = np.arange(len(self.evalues),dtype=int)
 
     def _run_solver(self, solver, sparse):
