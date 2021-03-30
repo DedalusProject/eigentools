@@ -19,6 +19,10 @@ Eigentools can be `pip` installed, though it requires [Dedalus](http://dedalus-p
 
 Documentation (including detailed API documentation) can be found at [Read the Docs](https://eigentools.readthedocs.io/).
 
+## Contributing
+
+Eigentools welcomes community contributions from issue reports to code contributions. For details, please see [CONTRIBUTING.md](our contribution policy).
+
 ## Developers
 The core development team consists of 
 
