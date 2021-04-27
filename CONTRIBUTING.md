@@ -1,7 +1,8 @@
 # Contributing to Eigentools #
 
 We welcome contributions, including issue reports, bug fixes, and feature implementations.
-If you would 
+Contributions are reviewed on Github via pull request; to get started, fork the repository, make changes, and issue a pull request.
+You can also contribute by submitting an issue.
 
 ## Reporting issues ##
 
