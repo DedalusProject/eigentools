@@ -32,7 +32,7 @@ ax1 = mfig.add_axes(0,0,[0,0,1,1])
 ax = plot_tools.plot_bot(df0['tasks/b'],(1,2), (0,slice(None),slice(None)),title='buoyancy',axes=ax1)
 ax[0].quiver(df0['scales/x/1.0/'][::skip_x], df0['scales/z/1.0'][::skip_z], df['tasks/u'][0,::skip_x,::skip_z].T, df['tasks/w'][0,::skip_x,::skip_z].T)
 ax[1].ticklabel_format(scilimits=(0,0),useMathText=True)
-ax[1].text(1.025, 1, r'$\times 10^{-3}$', va='bottom', ha='left',transform=ax[1].transAxes)
+ax[1].text(1.025, 1, r'$\times 10^{-3}$', va='bottom', ha='left',transform=ax[1].transAxes, fontsize=14)
 ax[1].xaxis.get_children()[1].set_visible(False)
 
 
