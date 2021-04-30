@@ -21,7 +21,7 @@ Documentation (including detailed API documentation) can be found at [Read the D
 
 ## Contributing
 
-Eigentools welcomes community contributions from issue reports to code contributions. For details, please see [CONTRIBUTING.md](our contribution policy).
+Eigentools welcomes community contributions from issue reports to code contributions. For details, please see [our contribution policy](CONTRIBUTING.md).
 
 ## Developers
 The core development team consists of 
