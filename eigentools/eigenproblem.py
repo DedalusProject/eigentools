@@ -538,7 +538,7 @@ class Eigenproblem():
 
                     q = np.random.randn(matsize)+1j*np.random.randn(matsize)
                     q /= np.linalg.norm(q)
-                    H = np.zeros((maxiter, maxiter), dtype=np.complex128)
+                    H = np.zeros((maxiter+1, maxiter+1), dtype=np.complex128)
                     for p in range(maxiter):
                         v = scipy.linalg.solve_triangular(T1, scipy.linalg.solve_triangular(T2,q,lower=True)) - beta*qold
                         alpha = np.dot(q.conj(), v)
@@ -553,7 +553,8 @@ class Eigenproblem():
                         if np.abs(sigold/sig - 1) < rtol:
                             break
                         sigold = sig
-
+                    if p == (maxiter - 1):
+                        logger.warning("Iterative solver did not converge for (x, y) = ({},{})".format(x,y))
                     R[j, i] = 1/np.sqrt(sig)
         return R
 
