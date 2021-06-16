@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="eigentools", 
-    version="2.2012",
+    version="2.2106",
     author="J. S. Oishi",
     author_email="jsoishi@gmail.com",
     description="A toolkit for solving eigenvalue problems with Dedalus",
