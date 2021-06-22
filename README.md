@@ -19,6 +19,8 @@ Eigentools can be `pip` installed, though it requires [Dedalus](http://dedalus-p
 
 Documentation (including detailed API documentation) can be found at [Read the Docs](https://eigentools.readthedocs.io/).
 
+If you are upgrading from version 1 to version 2, you can find a guide to API changes [here](https://eigentools.readthedocs.io/en/latest/pages/upgrading.html)
+
 ## Contributing
 
 Eigentools welcomes community contributions from issue reports to code contributions. For details, please see [our contribution policy](CONTRIBUTING.md).
