@@ -21,6 +21,7 @@ Contents
 
    pages/installation
    pages/getting_started
+   pages/upgrading
 
 Example notebooks
 -----------------
