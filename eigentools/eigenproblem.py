@@ -363,7 +363,7 @@ class Eigenproblem():
 
         merge_process_files(base_name, cleanup=True, comm=output_evaluator.domain.distributor.comm)
 
-    def calc_ps(self, k, zgrid, mu=0., pencil=0, inner_product=None, norm=-2, maxiter=10, rtol=1e-3):
+    def calc_ps(self, k, zgrid, mu=0., pencil=0, inner_product=None, norm=-2, maxiter=10, rtol=1e-3, parameters=None, **kw):
         """computes epsilon-pseudospectrum for the eigenproblem.
 
         Uses the algorithm described in section 5 of
@@ -388,9 +388,12 @@ class Eigenproblem():
         inner_product : function
             a function that takes two field systems and computes their
             inner product
+        parameters : dict, optional
+            A dict giving parameter names and values to the EVP. If None,
+            use values specified at EVP construction time.  (default: None)
         """
 
-        self.solve(sparse=True, N=k, pencil=pencil) # O(N k)?
+        self.solve(sparse=True, N=k, pencil=pencil, parameters=parameters, **kw) # O(N k)?
         pre_right = self.solver.pencils[pencil].pre_right
         pre_right_LU = scipy.sparse.linalg.splu(pre_right.tocsc()) # O(N)
         V = pre_right_LU.solve(self.solver.eigenvectors) # O(N k)
