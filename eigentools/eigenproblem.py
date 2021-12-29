@@ -328,8 +328,8 @@ class Eigenproblem():
         
         if len(transverse_modes) != (len(domain.bases) - 1):
             raise ValueError("Must specify {} transverse modes for a domain with {} bases; {} specified".format(len(domain.bases)-1, len(domain.bases), len(transverse_modes)))
-
-        field_slice = tuple(i for i in [transverse_modes, slice(None)])
+        
+        field_slice = tuple(transverse_modes) + (slice(None),)
 
         self._set_eigenmode(index, all_modes=all_modes)
 
