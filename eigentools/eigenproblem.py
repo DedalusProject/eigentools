@@ -704,7 +704,7 @@ class Eigenproblem():
         eval_low_and_indx = eval_low_and_indx[np.where(inverse_drift > self.drift_threshold)]
         
         eval_low = eval_low_and_indx[:, 0]
-        indx = eval_low_and_indx[:, 1].real.astype(np.int)
+        indx = eval_low_and_indx[:, 1].real.astype(int)
     
         return eval_low, indx
 
