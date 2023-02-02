@@ -3,7 +3,7 @@ import logging
 from dedalus.core.field import Field
 from dedalus.core.evaluator import Evaluator
 from dedalus.core.system import FieldSystem
-from dedalus.tools.post import merge_process_files
+
 import dedalus.public as de
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,7 +28,7 @@ class Eigenproblem():
 
         Additionally, Eigenproblems can compute epsilon-pseudospectra for
         arbitrary Dedalus differential-algebraic equations.
-        
+
 
         Parameters
         ----------
@@ -37,7 +37,7 @@ class Eigenproblem():
         reject : bool, optional
             whether or not to reject spurious eigenvalues (default: True)
         factor : float, optional
-            The factor by which to multiply the resolution. 
+            The factor by which to multiply the resolution.
             NB: this must be a rational number such that factor times the
             resolution of EVP is an integer. (default: 1.5)
         scales : float, optional
@@ -69,9 +69,9 @@ class Eigenproblem():
             epsilon-pseudospectrum computed at specified points in the
             complex plane
         ps_real : ndarray
-            real coordinates for epsilon-pseudospectrum 
+            real coordinates for epsilon-pseudospectrum
         ps_imag : ndarray
-            imaginary coordinates for epsilon-pseudospectrum 
+            imaginary coordinates for epsilon-pseudospectrum
 
         Notes
         -----
@@ -140,8 +140,8 @@ class Eigenproblem():
         target : complex, optional
             The target value to search for when using sparse solver
             (default: 0+0j)
-        
-        
+
+
         """
         if parameters:
             self._set_parameters(parameters)
@@ -178,7 +178,7 @@ class Eigenproblem():
 
     def _set_eigenmode(self, index, all_modes=False):
         """use EVP solver's set_state to access eigenmode in grid or coefficient space
-        
+
         The index parameter is either the index of the ordered good
         eigenvalues or the direct index of the low-resolution EVP depending
         on the all_modes option.
@@ -222,19 +222,19 @@ class Eigenproblem():
             f.set_scales(self.scales,keep_data=True)
 
         return self.solver.state
-        
+
     def growth_rate(self, parameters=None, **kwargs):
         """returns the maximum growth rate, defined by self.grow_func(),
         the index of the maximal mode, and the frequency of that mode. If
         there is no growing mode, returns the slowest decay rate.
-        
+
         also returns the index of the fastest growing mode.  If there are
         no good eigenvalues, returns np.nan for all three quantities.
 
         Returns
         -------
         growth_rate, index, freqency : tuple of ints
-        
+
         """
         try:
             self.solve(parameters=parameters, **kwargs)
@@ -303,7 +303,7 @@ class Eigenproblem():
             ax.set_ylabel(v)
             if i == 0:
                 ax.legend()
-                
+
         fig.tight_layout()
 
         return fig
@@ -314,38 +314,38 @@ class Eigenproblem():
 
         Parameters
         ----------
-        index : 
+        index :
             an integer giving the eigenmode to project
-        domain : 
+        domain :
             a domain to project onto
-        transverse_modes : 
+        transverse_modes :
             a tuple of mode numbers for the transverse directions
 
         Returns
         -------
            dedalus.core.system.FieldSystem
         """
-        
+
         if len(transverse_modes) != (len(domain.bases) - 1):
             raise ValueError("Must specify {} transverse modes for a domain with {} bases; {} specified".format(len(domain.bases)-1, len(domain.bases), len(transverse_modes)))
-        
+
         field_slice = tuple(transverse_modes) + (slice(None),)
 
         self._set_eigenmode(index, all_modes=all_modes)
 
         fields = []
-        
+
         for v in self.EVP.variables:
             fields.append(domain.new_field(name=v))
             fields[-1]['c'][field_slice] = self.solver.state[v]['c']
         field_system = FieldSystem(fields)
 
         return field_system
-    
+
     def write_global_domain(self, field_system, base_name="IVP_output"):
         """Given a field system, writes a Dedalus HDF5 file.
 
-        Typically, one would use this to write a field system constructed by project_mode. 
+        Typically, one would use this to write a field system constructed by project_mode.
 
         Parameters
         ----------
@@ -382,7 +382,7 @@ class Eigenproblem():
         zgrid : tuple
             (real, imag) points
         mu : complex
-            center point for pseudospectrum. 
+            center point for pseudospectrum.
         pencil : int
             pencil holding EVP
         inner_product : function
@@ -438,7 +438,7 @@ class Eigenproblem():
         Returns
         -------
         ndarray
-        
+
         """
         k = Q.shape[1]
         M = np.zeros((k,k), dtype=np.complex128)
@@ -471,11 +471,11 @@ class Eigenproblem():
 
     def _copy_system(self, state):
         """copies a field system.
-        
+
         Parameters
         ----------
         state : dedalus.core.system.FieldSystem
-        
+
         Returns
         -------
         dedalus.core.system.FieldSystem
@@ -485,7 +485,7 @@ class Eigenproblem():
             field = f.copy()
             field.name = f.name
             fields.append(field)
-            
+
         return FieldSystem(fields)
 
     def _pseudo(self, L, zgrid, maxiter=10, rtol=1e-3):
@@ -498,14 +498,14 @@ class Eigenproblem():
         R = ||z*I - L||_{-2}
 
         finding the maximum singular value.
-        
+
         If maxiter is not zero, uses the iterative algorithm from figure
         39.3 (p.375) of
 
         Trefethen & Embree, "Spectra and Pseudospectra: The Behavior of
         Nonnormal Matrices and Operators" (2005, Princeton University
         Press)
-        
+
         Parameters
         ----------
         L : square 2D ndarray
@@ -595,7 +595,7 @@ class Eigenproblem():
         else:
             ax = axes
             fig = axes.figure
-                
+
         ax.scatter(ev.real, ev.imag)
 
         if xlog:
@@ -624,11 +624,11 @@ class Eigenproblem():
 
         """
         old_evp = self.EVP
-        old_x = old_evp.domain.bases[0]
+        old_x = old_evp.dist.bases[0]
 
         x = tools.basis_from_basis(old_x, self.factor)
-        d = de.Domain([x],comm=old_evp.domain.dist.comm)
-        self.EVP_hires = de.EVP(d,old_evp.variables,old_evp.eigenvalue, ncc_cutoff=old_evp.ncc_kw['cutoff'], max_ncc_terms=old_evp.ncc_kw['max_terms'], tolerance=self.EVP.tol)
+        d = old_evp.dist
+        self.EVP_hires = de.EVP(old_evp.variables,old_evp.eigenvalue, ncc_cutoff=old_evp.ncc_kw['cutoff'], max_ncc_terms=old_evp.ncc_kw['max_terms'], tolerance=self.EVP.tol)
 
         for k,v in old_evp.substitutions.items():
             self.EVP_hires.substitutions[k] = v
@@ -654,7 +654,7 @@ class Eigenproblem():
             pass
 
         self.hires_solver = self.EVP_hires.build_solver()
-        
+
     def _discard_spurious_eigenvalues(self):
         """ Solves the linear eigenvalue problem for two different
         resolutions.  Returns trustworthy eigenvalues using nearest delta,
@@ -664,20 +664,20 @@ class Eigenproblem():
         eval_hi = self.evalues_high
 
         # Reverse engineer correct indices to make unsorted list from sorted
-        reverse_eval_low_indx = np.arange(len(eval_low)) 
+        reverse_eval_low_indx = np.arange(len(eval_low))
         reverse_eval_hi_indx = np.arange(len(eval_hi))
-    
+
         eval_low_and_indx = np.asarray(list(zip(eval_low, reverse_eval_low_indx)))
         eval_hi_and_indx = np.asarray(list(zip(eval_hi, reverse_eval_hi_indx)))
-        
+
         # remove nans
         eval_low_and_indx = eval_low_and_indx[np.isfinite(eval_low)]
         eval_hi_and_indx = eval_hi_and_indx[np.isfinite(eval_hi)]
-    
+
         # Sort eval_low and eval_hi by real parts
         eval_low_and_indx = eval_low_and_indx[np.argsort(eval_low_and_indx[:, 0].real)]
         eval_hi_and_indx = eval_hi_and_indx[np.argsort(eval_hi_and_indx[:, 0].real)]
-        
+
         eval_low_sorted = eval_low_and_indx[:, 0]
         eval_hi_sorted = eval_hi_and_indx[:, 0]
 
@@ -689,23 +689,23 @@ class Eigenproblem():
 
         if not (np.isfinite(sigmas)).all():
             logger.warning("At least one eigenvalue spacings (sigmas) is non-finite (np.inf or np.nan)!")
-    
+
         # Ordinal delta
         self.delta_ordinal = np.array([np.abs(eval_low_sorted[j] - eval_hi_sorted[j])/sigmas[j] for j in range(len(eval_low_sorted))])
 
         # Nearest delta
         self.delta_near = np.array([np.nanmin(np.abs(eval_low_sorted[j] - eval_hi_sorted)/sigmas[j]) for j in range(len(eval_low_sorted))])
-    
+
         # Discard eigenvalues with 1/delta_near < drift_threshold
         if self.use_ordinal:
             inverse_drift = 1/self.delta_ordinal
         else:
             inverse_drift = 1/self.delta_near
         eval_low_and_indx = eval_low_and_indx[np.where(inverse_drift > self.drift_threshold)]
-        
+
         eval_low = eval_low_and_indx[:, 0]
         indx = eval_low_and_indx[:, 1].real.astype(np.int)
-    
+
         return eval_low, indx
 
     def plot_drift_ratios(self, axes=None):
@@ -716,7 +716,7 @@ class Eigenproblem():
 
         Returns
         -------
-        matplotlib.figure.Figure        
+        matplotlib.figure.Figure
 
         """
         if self.reject is False:

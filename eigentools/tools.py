@@ -1,7 +1,7 @@
 import dedalus.public as de
 
 # these are the currently supported dedalus eigenvalue bases
-bases_register = {"Chebyshev": de.Chebyshev, "Fourier": de.Fourier, "Legendre": de.Legendre}
+bases_register = {"Chebyshev": de.Chebyshev, "Fourier": de.ComplexFourier}
 
 def update_EVP_params(EVP, key, value):
     # Dedalus workaround: must change values in two places
