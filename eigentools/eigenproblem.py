@@ -174,7 +174,7 @@ class Eigenproblem():
         if sparse:
             solver.solve_sparse(solver.pencils[self.pencil], N=self.N, target=self.target, rebuild_coeffs=True, **self.solver_kwargs)
         else:
-            solver.solve_dense(solver.pencils[self.pencil], rebuild_coeffs=True)
+            solver.solve_dense(solver.pencils[self.pencil], rebuild_coeffs=True, **self.solver_kwargs)
 
     def _set_eigenmode(self, index, all_modes=False):
         """use EVP solver's set_state to access eigenmode in grid or coefficient space
@@ -704,7 +704,7 @@ class Eigenproblem():
         eval_low_and_indx = eval_low_and_indx[np.where(inverse_drift > self.drift_threshold)]
         
         eval_low = eval_low_and_indx[:, 0]
-        indx = eval_low_and_indx[:, 1].real.astype(np.int)
+        indx = eval_low_and_indx[:, 1].real.astype(int)
     
         return eval_low, indx
 
