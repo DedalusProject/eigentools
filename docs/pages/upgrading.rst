@@ -31,7 +31,7 @@ Here, we solve twice, once with :code:`c1 = 1` and once with :code:`c2 = 2`. Giv
     x = de.Chebyshev('x',Nx, interval=(-1, 1))
     d = de.Domain([x])
     
-    string = de.EVP(d, ['u','u_x'], eigenvalue='omega')
+    string = de.EVP(d, ['u', 'u_x'], eigenvalue='omega')
     string.parameters['c2'] = 1
     string.add_equation("omega*u + c2*dx(u_x) = 0")
     string.add_equation("u_x - dx(u) = 0")
@@ -40,7 +40,7 @@ Here, we solve twice, once with :code:`c1 = 1` and once with :code:`c2 = 2`. Giv
     EP = Eigenproblem(string)
     EP.solve(sparse=False)
     evals_c1 = EP.evalues
-    EP.solve(sparse=False, parameters={'c2':2})
+    EP.solve(sparse=False, parameters={'c2': 2})
     evals_c2 = EP.evalues
     
     print(np.allclose(evals_c2, 2*evals_c1))
@@ -49,7 +49,7 @@ Getting eigenmodes
 ==================
 
 Getting eigenmodes has also been simplified and significantly extended. Previously, getting an eigenmode corresponding to an eigenvalue required using the :code:`set_state()` method on the underlying :code:`EVP` object. In keeping with the principle of not needing to manipulate the :code:`EVP`, we provide a new :code:`.eigenmode(index)`, where :code:`index` is the mode number corresponding to the eigenvalue index in :code:`EP.evalues`. By default, with mode rejection on, these are the "good" eigenmodes.
-`.eigenmode(index)` returns a Dedalus :code:`FieldSystem` object, with a Dedalus :code:`Field` for each field in the eigenmode:
+:code:`.eigenmode(index)` returns a Dedalus :code:`FieldSystem` object, with a Dedalus :code:`Field` for each field in the eigenmode:
 
 .. code-block:: python
                 
@@ -80,8 +80,8 @@ First, replace
         iRm = 1/x
         iRe = (iRm*Pm)
         print("Rm = {}; Re = {}; Pm = {}".format(1/iRm, 1/iRe, Pm))
-        gr, indx, freq = EP.growth_rate({"Q":y,"iRm":iRm,"iR":iRe})
-        ret = gr+1j*freq
+        gr, indx, freq = EP.growth_rate({"Q":y, "iRm": iRm, "iR": iRe})
+        ret = gr + 1j*freq
         return ret
      
     cf = CriticalFinder(shim, comm)
@@ -102,7 +102,7 @@ Once this is done, the grid generation changes from
                 
     mins = np.array((4.6, 0.5))
     maxs = np.array((5.5, 1.5))
-    ns   = np.array((10,10))
+    ns   = np.array((10, 10))
     logs = np.array((False, False))
     
     cf.grid_generator(mins, maxs, ns, logs=logs)
