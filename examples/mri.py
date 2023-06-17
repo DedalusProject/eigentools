@@ -94,7 +94,7 @@ if comm.rank == 0:
     pax,cax = cf.plot_crit()
     fig = pax.figure
     # add an interpolated critical line
-    x_lim = cf.parameter_grids[0][0,np.isfinite(cf.roots)]
+    x_lim = cf.parameter_grids[0][0, np.isfinite(cf.roots)]
     x_hires = np.linspace(x_lim[0], x_lim[-1], 100)
     pax.plot(x_hires, cf.root_fn(x_hires), color='k')
     fig.savefig('{}.png'.format(file_name), dpi=300)
