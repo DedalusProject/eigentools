@@ -6,7 +6,6 @@ NB: This formulation uses a slightly different scaling of the eigenvalue than Or
 sigma = -1j*alpha*Re*lambda,
 
 where sigma is our eigenvalue and Lambda is Orszag's.
-
 """
 import matplotlib
 matplotlib.use('Agg')
@@ -26,17 +25,17 @@ comm = MPI.COMM_WORLD
 
 # Define the Orr-Somerfeld problem in Dedalus: 
 
-z = de.Chebyshev('z',50)
+z = de.Chebyshev('z', 50)
 d = de.Domain([z],comm=MPI.COMM_SELF)
 
-orr_somerfeld = de.EVP(d,['w','wz','wzz','wzzz'],'sigma')
+orr_somerfeld = de.EVP(d,['w', 'wz', 'wzz', 'wzzz'], 'sigma')
 orr_somerfeld.parameters['alpha'] = 1.
 orr_somerfeld.parameters['Re'] = 10000.
 
 orr_somerfeld.add_equation('dz(wzzz) - 2*alpha**2*wzz + alpha**4*w - sigma*(wzz-alpha**2*w)-1j*alpha*(Re*(1-z**2)*(wzz-alpha**2*w) + 2*Re*w) = 0 ')
-orr_somerfeld.add_equation('dz(w)-wz = 0')
-orr_somerfeld.add_equation('dz(wz)-wzz = 0')
-orr_somerfeld.add_equation('dz(wzz)-wzzz = 0')
+orr_somerfeld.add_equation('dz(w) - wz = 0')
+orr_somerfeld.add_equation('dz(wz) - wzz = 0')
+orr_somerfeld.add_equation('dz(wzz) - wzzz = 0')
 
 orr_somerfeld.add_bc('left(w) = 0')
 orr_somerfeld.add_bc('right(w) = 0')
@@ -89,4 +88,3 @@ if comm.rank == 0:
 
     cf.save_grid('orr_sommerfeld_growth_rates')
     cf.plot_crit()
-

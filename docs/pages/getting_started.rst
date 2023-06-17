@@ -11,10 +11,10 @@ This is not quite as trivial a problem as it might seem, because we are expandin
     import dedalus.public as de
     
     Nx = 128
-    x = de.Chebyshev('x',Nx, interval=(-1, 1))
+    x = de.Chebyshev('x' ,Nx, interval=(-1, 1))
     d = de.Domain([x])
     
-    string = de.EVP(d, ['u','u_x'], eigenvalue='omega')
+    string = de.EVP(d, ['u', 'u_x'], eigenvalue='omega')
     string.add_equation("omega*u + dx(u_x) = 0")
     string.add_equation("u_x - dx(u) = 0")
     string.add_bc("left(u) = 0")
@@ -24,7 +24,7 @@ This is not quite as trivial a problem as it might seem, because we are expandin
     EP.solve(sparse=False)
     ax = EP.plot_spectrum()
     print("there are {} good eigenvalues.".format(len(EP.evalues)))
-    ax.set_ylim(-1,1)
+    ax.set_ylim(-1, 1)
     ax.figure.savefig('waves_spectrum.png')
 
     ax = EP.plot_drift_ratios()
@@ -38,15 +38,15 @@ That code takes about 10 seconds to run on a 2020 Core-i7 laptop, produces about
 
 eigentools has taken a Dedalus eigenvalue problem, automatically run it at 1.5 times the specified resolution, rejected any eigenvalues that do not agree to a default precision of one part in :math:`10^{-6}` and plotted a spectrum in six extra lines of code!           
 
-Most of the plotting functions in eigentools return a `matplotlib` `axes` object, making it easy to modify the plot defaults.
-Here, we set the y-limits manually, because the eigenvalues of a string are real.
-Try removing the `ax.set_ylim(-1,1)` line and see what happens.
+Most of the plotting functions in eigentools return a :code:`matplotlib` :code:`axes` object, making it easy to modify the plot defaults.
+Here, we set the :math:y`-limits manually, because the eigenvalues of a string are real.
+Try removing the :code:`ax.set_ylim(-1, 1)` line and see what happens.
 
 Mode Rejection
 --------------
-One of the most important tasks eigentools performs is spurious mode rejection. It does so by computing the "drift ratio" [Boyd2000]_ between the eigenvalues at the given resolution and a higher resolution problem that eigentools automatically assembles. By default, the "high" resolution case is 1.5 times the given resolution, though this is user configurable via the `factor` keyword option to `Eigenproblem()`.
+One of the most important tasks eigentools performs is spurious mode rejection. It does so by computing the "drift ratio" [Boyd2000]_ between the eigenvalues at the given resolution and a higher resolution problem that eigentools automatically assembles. By default, the "high" resolution case is 1.5 times the given resolution, though this is user configurable via the :code:`factor` keyword option to `Eigenproblem()`.
 
-The drift ratio :math:`\delta` is calculated using either the **ordinal** (e.g. first mode of low resolution to first mode of high resolution) or **nearest** (mode with smallest difference between a given high mode and all low modes). In order to visualize this, `EP.plot_drift_ratios()` in the above code returns an `axes` object making a plot of the *inverse drift ratio* (:math:`1/\delta`),
+The drift ratio :math:`\delta` is calculated using either the **ordinal** (e.g. first mode of low resolution to first mode of high resolution) or **nearest** (mode with smallest difference between a given high mode and all low modes). In order to visualize this, :code:`EP.plot_drift_ratios()` in the above code returns an :code:`axes` object making a plot of the *inverse drift ratio* (:math:`1/\delta`),
 
 .. image:: ../images/waves_drift_ratios.png
            :width: 400
