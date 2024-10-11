@@ -14,7 +14,7 @@ from . import tools
 logger = logging.getLogger(__name__.split('.')[-1])
 
 class Eigenproblem():
-    def __init__(self, EVP, reject=True, factor=1.5, scales=1, drift_threshold=1e6, use_ordinal=False, grow_func=lambda x: x.real, freq_func=lambda x: x.imag):
+    def __init__(self, EVP, reject='tau', EVP_secondary=None, scales=1, drift_threshold=1e6, use_ordinal=False, grow_func=lambda x: x.real, freq_func=lambda x: x.imag):
         """An object for feature-rich eigenvalue analysis.
 
         Eigenproblem provides support for common tasks in eigenvalue
@@ -34,20 +34,10 @@ class Eigenproblem():
         ----------
         EVP : dedalus.core.problems.EigenvalueProblem
             The Dedalus EVP object containing the equations to be solved
-        reject : bool, optional
-            whether or not to reject spurious eigenvalues (default: True)
-        factor : float, optional
-            The factor by which to multiply the resolution.
-            NB: this must be a rational number such that factor times the
-            resolution of EVP is an integer. (default: 1.5)
+        reject : 'tau', 'distance', or None, optional
+            Method for rejecting spurious eigenvalues (default: 'tau')
         scales : float, optional
             A multiple for setting the grid resolution.  (default: 1)
-        drift_threshold : float, optional
-            Inverse drift ratio threshold for keeping eigenvalues during
-            rejection (default: 1e6)
-        use_ordinal : bool, optional
-            If true, use ordinal method from Boyd (1989); otherwise use
-            nearest (default: False)
         grow_func : func
             A function that takes a complex input and returns the growth
             rate as defined by the EVP (default: uses real part)
@@ -57,14 +47,10 @@ class Eigenproblem():
 
         Attributes
         ----------
-        evalues : ndarray
+        evalues  : ndarray
             Lists "good" eigenvalues
-        evalues_low : ndarray
-            Lists eigenvalues from low resolution solver (i.e. the
-            resolution of the specified EVP)
-        evalues_high : ndarray
-            Lists eigenvalues from high resolution solver (i.e. factor
-            times specified EVP resolution)
+        evalues_primary : ndarray
+            Lists all eigenvalues from solver
         pseudospectrum : ndarray
             epsilon-pseudospectrum computed at specified points in the
             complex plane
@@ -78,17 +64,25 @@ class Eigenproblem():
         See references for algorithms in individual method docstrings.
 
         """
-        self.reject = reject
-        self.factor = factor
         self.EVP = EVP
+        if reject == 'distance':
+            if not EVP_secondary:
+                raise ValueError("Distance rejection method requires second EVP object")
+            self.EVP_secondary = EVP_secondary
+            self.reject_distance = True
+        elif reject == 'tau':
+            self.reject_tau = True
+        elif reject is not None:
+            raise ValueError(f"{reject} is not a supported rejection method. Supported methods are tau, distance, and None")
+        
         self.solver = EVP.build_solver()
-        if self.reject:
-            self._build_hires()
+        if self.reject_distance:
+            self.solver_secondary = self.EVP_secondary.build_solver()
 
-        self.grid_name = self.EVP.domain.bases[0].name
+        
         self.evalues = None
-        self.evalues_low = None
-        self.evalues_high = None
+        self.evalues_primary = None
+        self.evalues_secondary = None
         self.pseudospectrum = None
         self.ps_real = None
         self.ps_imag = None
@@ -121,7 +115,7 @@ class Eigenproblem():
         """
         return self.EVP.domain.grids(scales=self.scales)[0]
 
-    def solve(self, sparse=False, parameters=None, pencil=0, N=15, target=0, **kwargs):
+    def solve(self, sparse=False, parameters=None, subproblem=0, N=15, target=0, **kwargs):
         """solve underlying eigenvalue problem.
 
         Parameters
@@ -132,8 +126,8 @@ class Eigenproblem():
         parameters : dict, optional
             A dict giving parameter names and values to the EVP. If None,
             use values specified at EVP construction time.  (default: None)
-        pencil : int, optional
-            The EVP pencil to be solved. (default: 0)
+        subproblem : int, optional
+            The EVP subproblem to be solved. (default: 0)
         N : int, optional
             The number of eigenvalues to find if using a sparse solver
             (default: 15)
@@ -145,20 +139,20 @@ class Eigenproblem():
         """
         if parameters:
             self._set_parameters(parameters)
-        self.pencil = pencil
+        self.subproblem = subproblem
         self.N = N
         self.target = target
         self.solver_kwargs = kwargs
 
         self._run_solver(self.solver, sparse)
-        self.evalues_low = self.solver.eigenvalues
+        self.evalues_primary = self.solver.eigenvalues
 
-        if self.reject:
-            self._run_solver(self.hires_solver, sparse)
-            self.evalues_high = self.hires_solver.eigenvalues
+        if self.reject_distance:
+            self._run_solver(self.solver_secondary, sparse)
+            self.evalues_secondary = self.solver_secondary.eigenvalues
             self._reject_spurious()
         else:
-            self.evalues = self.evalues_low
+            self.evalues = self.evalues_primary
             self.evalues_index = np.arange(len(self.evalues),dtype=int)
 
     def _run_solver(self, solver, sparse):
@@ -172,9 +166,9 @@ class Eigenproblem():
             If True, use sparse solver; otherwise use dense.
         """
         if sparse:
-            solver.solve_sparse(solver.pencils[self.pencil], N=self.N, target=self.target, rebuild_coeffs=True, **self.solver_kwargs)
+            solver.solve_sparse(solver.subproblems[self.subproblem], rebuild_matrices=True, N=self.N, target=self.target, **self.solver_kwargs)
         else:
-            solver.solve_dense(solver.pencils[self.pencil], rebuild_coeffs=True)
+            solver.solve_dense(solver.subproblems[self.subproblem], rebuild_matrices=True)
 
     def _set_eigenmode(self, index, all_modes=False):
         """use EVP solver's set_state to access eigenmode in grid or coefficient space
@@ -581,9 +575,9 @@ class Eigenproblem():
             Label to be applied to the imaginary axis
         """
         if spectype == 'low':
-            ev = self.evalues_low
+            ev = self.evalues_primary
         elif spectype == 'high':
-            ev = self.evalues_high
+            ev = self.evalues_secondary
         elif spectype == 'good':
             ev = self.evalues_good
         else:
@@ -660,8 +654,8 @@ class Eigenproblem():
         resolutions.  Returns trustworthy eigenvalues using nearest delta,
         from Boyd chapter 7.
         """
-        eval_low = self.evalues_low
-        eval_hi = self.evalues_high
+        eval_low = self.evalues_primary
+        eval_hi = self.evalues_secondary
 
         # Reverse engineer correct indices to make unsorted list from sorted
         reverse_eval_low_indx = np.arange(len(eval_low))
@@ -704,7 +698,7 @@ class Eigenproblem():
         eval_low_and_indx = eval_low_and_indx[np.where(inverse_drift > self.drift_threshold)]
 
         eval_low = eval_low_and_indx[:, 0]
-        indx = eval_low_and_indx[:, 1].real.astype(np.int)
+        indx = eval_low_and_indx[:, 1].real.astype(int)
 
         return eval_low, indx
 
