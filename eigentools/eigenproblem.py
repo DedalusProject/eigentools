@@ -1,3 +1,4 @@
+from collections import namedtuple
 from dedalus.tools.cache import CachedAttribute
 import logging
 from dedalus.core.field import Field
@@ -13,8 +14,12 @@ from . import tools
 
 logger = logging.getLogger(__name__.split('.')[-1])
 
+# Residual pair
+ResidualPair = namedtuple('ResidualPair', ['tau','var'])
+
+
 class Eigenproblem():
-    def __init__(self, EVP, reject='tau', EVP_secondary=None, scales=1, drift_threshold=1e6, use_ordinal=False, grow_func=lambda x: x.real, freq_func=lambda x: x.imag):
+    def __init__(self, EVP, reject='tau', tau_residual_pairs = None, EVP_secondary=None, scales=1, rejection_tolerance=1e-6, drift_threshold=1e6, use_ordinal=False, grow_func=lambda x: x.real, freq_func=lambda x: x.imag):
         """An object for feature-rich eigenvalue analysis.
 
         Eigenproblem provides support for common tasks in eigenvalue
@@ -34,8 +39,12 @@ class Eigenproblem():
         ----------
         EVP : dedalus.core.problems.EigenvalueProblem
             The Dedalus EVP object containing the equations to be solved
-        reject : 'tau', 'distance', or None, optional
+        reject : 'truncation', 'tau', 'distance', or None, optional
             Method for rejecting spurious eigenvalues (default: 'tau')
+        EVP_secondary : dedalus.core.problems.EigenvalueProblem or None (default: None)
+            The secondary Dedalus EVP object used for distance-based mode rejection
+        tau_residual_pairs : tuple of ResidualPair, ResidualPair, or None (default: None)
+            A list of tau, variable pairs for tau-based rejection.
         scales : float, optional
             A multiple for setting the grid resolution.  (default: 1)
         grow_func : func
@@ -65,20 +74,25 @@ class Eigenproblem():
 
         """
         self.EVP = EVP
-        if reject == 'distance':
+        self.reject = reject
+        self.solver = EVP.build_solver()
+        self.EVP_secondary = EVP_secondary
+        if self.reject == 'distance':
             if not EVP_secondary:
                 raise ValueError("Distance rejection method requires second EVP object")
-            self.EVP_secondary = EVP_secondary
-            self.reject_distance = True
-        elif reject == 'tau':
-            self.reject_tau = True
-        elif reject is not None:
-            raise ValueError(f"{reject} is not a supported rejection method. Supported methods are tau, distance, and None")
-        
-        self.solver = EVP.build_solver()
-        if self.reject_distance:
             self.solver_secondary = self.EVP_secondary.build_solver()
-
+        elif self.reject == 'tau':
+            if not tau_residual_pairs:
+                raise ValueError("Tau rejection method requires at least one (tau, var) pair.")
+            if isinstance(tau_residual_pairs, ResidualPair):
+                self.tau_residual_pairs = (tau_residual_pairs,)
+            else:
+                self.tau_residual_pairs = tau_residual_pairs
+            self.rejection_tolerance = rejection_tolerance
+        elif self.reject == 'truncation':
+            self.rejection_tolerance = rejection_tolerance
+        elif self.reject is not None:
+            raise ValueError(f"{reject} is not a supported rejection method. Supported methods are tau, distance, and None")
         
         self.evalues = None
         self.evalues_primary = None
@@ -105,10 +119,9 @@ class Eigenproblem():
 
         """
         for k,v in parameters.items():
-            tools.update_EVP_params(self.EVP, k, v)
-            if self.reject:
-                tools.update_EVP_params(self.EVP_hires, k, v)
-
+            self.solver.problem.namespace[k]['g'] = v
+            if self.EVP_secondary:
+                self.solver_secondary.problem.namespace[k]['g'] = v
     def grid(self):
         """get grid points for eigenvectors.
 
@@ -147,14 +160,10 @@ class Eigenproblem():
         self._run_solver(self.solver, sparse)
         self.evalues_primary = self.solver.eigenvalues
 
-        if self.reject_distance:
+        if self.reject == 'distance':
             self._run_solver(self.solver_secondary, sparse)
             self.evalues_secondary = self.solver_secondary.eigenvalues
-            self._reject_spurious()
-        else:
-            self.evalues = self.evalues_primary
-            self.evalues_index = np.arange(len(self.evalues),dtype=int)
-
+        self.reject_spurious()
     def _run_solver(self, solver, sparse):
         """wrapper method to run solver.
 
@@ -463,6 +472,55 @@ class Eigenproblem():
         system.set_pencil(self.solver.eigenvalue_pencil, evector)
         system.scatter()
 
+    def _select_field(self, field_name):
+        for f in self.solver.state:
+            f['c'] = 0
+        self.solver.problem.namespace[field_name]['c'] = 1
+        field_vec = self.solver.eigenvalue_subproblem.gather_inputs(self.solver.state)
+        field_index = np.where(field_vec != 0)[0]
+        return field_index
+
+    def _compute_truncation_errors(self, tolerance=None):
+        retained_index = np.ones(len(self.solver.eigenvalues), dtype=bool)
+        if not hasattr(self.solver.eigenvalue_subproblem, '_input_buffer'):
+            self.solver.eigenvalue_subproblem._build_buffers()
+        for f in self.solver.state:
+            f_index = self._select_field(f.name)
+            f_evec = self.solver.eigenvectors[f_index,:]
+            retained_index &= (np.abs(f_evec[-1]) < self.rejection_tolerance)
+            if len(f_evec) != 1:
+                retained_index &= (np.abs(f_evec[-2]) < self.rejection_tolerance)
+                retained_index &= (np.abs(f_evec[-3]) < self.rejection_tolerance)
+                retained_index &= (np.abs(f_evec[-4]) < self.rejection_tolerance)
+        evg = self.solver.eigenvalues[retained_index]
+        indices = np.arange(len(self.solver.eigenvalues),dtype=int)
+        return evg, indices[retained_index]
+            
+    def _compute_tau_errors(self, tolerance=None):
+        """
+        Simple amplitude-based tau rejection using L-inf norm.
+        """
+        self.solver.eigenvalue_subproblem._build_buffers()
+        retained_index = np.ones(len(self.solver.eigenvalues), dtype=bool)
+        for tp in self.tau_residual_pairs:
+            var_index = self._select_field(tp.var)
+            tau_index = self._select_field(tp.tau)
+            evec_var = self.solver.eigenvectors[var_index, :]
+            evec_tau = self.solver.eigenvectors[tau_index, :]
+            numer = np.nanmax(np.abs(evec_tau), axis=0)
+            denom =  np.nanmax(np.abs(evec_var), axis=0) + 1e-16
+            self.error = numer / denom
+
+            if tolerance:
+                rel_tol = tolerance
+            else:
+                rel_tol = self.rejection_tolerance
+
+            retained_index &= (self.error < rel_tol) 
+        indices = np.arange(len(self.solver.eigenvalues),dtype=int)
+        return self.solver.eigenvalues[retained_index], indices[retained_index]
+        
+
     def _copy_system(self, state):
         """copies a field system.
 
@@ -603,11 +661,19 @@ class Eigenproblem():
 
         return ax
 
-    def _reject_spurious(self):
+    def reject_spurious(self, tolerance=None):
         """perform eigenvalue rejection
 
         """
-        evg, indx = self._discard_spurious_eigenvalues()
+        if not self.reject:
+            evg = self.evalues_primary
+            indx =  np.arange(len(self.evalues_primary),dtype=int)
+        elif self.reject == 'tau':
+            evg, indx = self._compute_tau_errors(tolerance=tolerance)
+        elif self.reject == 'distance':
+            evg, indx = self._compute_eigenvalue_deltas()
+        elif self.reject == 'truncation':
+            evg, indx = self._compute_truncation_errors()
         self.evalues_good = evg
         self.evalues_index = indx
         self.evalues = self.evalues_good
@@ -649,10 +715,14 @@ class Eigenproblem():
 
         self.hires_solver = self.EVP_hires.build_solver()
 
-    def _discard_spurious_eigenvalues(self):
-        """ Solves the linear eigenvalue problem for two different
-        resolutions.  Returns trustworthy eigenvalues using nearest delta,
-        from Boyd chapter 7.
+    def _compute_eigenvalue_deltas(self):
+        """Computes delta between two sets of eigenvalues("primary" and "secondary"), using
+        either "ordinal" or "nearist" via the algorithm described in
+        Boyd chapter 7.
+
+        If the two sets differ in resolution, the secondary set is the one with higher resolution.
+
+        returns "good" eigenvalues and indices into the primary set of eigenvalues.
         """
         eval_low = self.evalues_primary
         eval_hi = self.evalues_secondary

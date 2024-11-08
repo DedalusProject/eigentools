@@ -5,5 +5,5 @@
 # have been included in the file 'LICENSE.txt', and is also available
 # online at <http://www.gnu.org/licenses/gpl-3.0.html>.
 
-from .eigenproblem import Eigenproblem
+from .eigenproblem import Eigenproblem, ResidualPair
 from .criticalfinder import CriticalFinder

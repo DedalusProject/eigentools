@@ -1,7 +1,8 @@
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import dedalus.public as d3
-from eigentools import Eigenproblem
+from eigentools import Eigenproblem, ResidualPair
 
 import logging
 logger = logging.getLogger(__name__)
@@ -49,8 +50,17 @@ def run_rejection(Nx, method):
     elif method == 'basis':
         cheb_EVP = wave_on_string_EVP(Nx, use_legendre=False)
         leg_EVP = wave_on_string_EVP(Nx, use_legendre=True)
-        ep = Eigenproblem(cheb_EVP, reject='distance', EVP_secondary=leg_EVP)
-
+        ep = Eigenproblem(leg_EVP, reject='distance', EVP_secondary=cheb_EVP)
+    elif method == 'tau':
+        EVP = wave_on_string_EVP(Nx)
+        rp1 = ResidualPair(tau='tau_1', var='u')
+        rp2 = ResidualPair(tau='tau_2', var='u')
+        for rp in (rp1, rp2):
+            print(f"var = {rp.var}, tau = {rp.tau}")
+        ep = Eigenproblem(EVP, reject='tau', tau_residual_pairs=(rp1, rp2), rejection_tolerance=1e-4)
+    elif method =='truncation':
+        EVP = wave_on_string_EVP(Nx)
+        ep = Eigenproblem(EVP, reject='truncation', rejection_tolerance=1e-5)
     ep.solve()
     num_evals_lo = len(ep.evalues_primary)
     num_evals_kept = len(ep.evalues)
@@ -58,9 +68,69 @@ def run_rejection(Nx, method):
     num_rejected = num_evals_lo - num_evals_kept
     print(f"{method} : {num_rejected} rejected eigenmodes.")
 
-if __name__ == "__main__":
-    Nx = 128
-    run_rejection(Nx, 'resolution')
-    run_rejection(Nx, 'basis')
+    return ep
 
+def plot_mode(eigenproblem, index, kept):
+    plt.clf()
+    eigenproblem.solver.set_state(index)
+
+    u = eigenproblem.EVP.namespace['u']
+    tau_1 = eigenproblem.EVP.namespace['tau_1']
+    tau_2 = eigenproblem.EVP.namespace['tau_2']
+    eval = eigenproblem.evalues_primary[index].real
+    sigma = np.sqrt(eval)/np.pi
+    x = u.domain.bases[0].local_grid(u.dist,1)
+    plt.subplot(211)
+    plt.semilogy(np.abs(u['c']), label = f"tau_1 = {tau_1['c'][0].real:.3e}, tau_2 = {tau_2['c'][0].real:.3e}")
+    plt.axhline(1e-5, color='k', alpha=0.7)
+    plt.legend()
+    plt.ylabel('coeff')
+    plt.title(f"sigma = {sigma:.0f}, kept= {kept}")
+    plt.subplot(212)
+    plt.plot(x, u['g'].real)
+    plt.ylabel('grid')
+    print(f"saving mode {index}.")
+    plt.tight_layout()
+    plt.savefig(f"mode_{index}.png",dpi=300)
+if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+    Nx = 128
+    ep_c = run_rejection(Nx, 'truncation')
+    ep_r = run_rejection(Nx, 'resolution')
+    ep_b = run_rejection(Nx, 'basis')
+    ep_t = run_rejection(Nx, 'tau')
+    n = 1 + np.arange(Nx)
+    true_evals = (n * np.pi)**2
     
+    plt.semilogy(np.abs(ep_r.evalues.real-true_evals[slice(0,len(ep_r.evalues))]), label='resolution', alpha=0.5, marker='o')
+    plt.semilogy(np.abs(ep_b.evalues.real-true_evals[slice(0,len(ep_b.evalues))]),label='basis', alpha=0.5, marker='x')
+    plt.semilogy(np.abs(np.sort(ep_t.evalues.real)-true_evals[slice(0,len(ep_t.evalues))]),label='tau', alpha=0.5, marker='+')
+    plt.semilogy(np.abs(np.sort(ep_c.evalues.real)-true_evals[slice(0,len(ep_c.evalues))]),label='truncation', alpha=0.5, marker='+')
+
+    plt.xlabel("number")
+    plt.ylabel("eigenvalue error")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("evals_resolution_basis_tau.png", dpi=300)
+
+    # tau_sort = np.argsort(ep_t.evalues_primary.real)
+    # print(f"tau evals = {np.sqrt(ep_t.evalues_primary[tau_sort])/np.pi}")
+    
+    # print(f"tau errors= {ep_t.error[tau_sort]}")
+
+    plt.clf()
+    trunc_sort = np.argsort(ep_c.evalues.real)
+    total_trunc_sort = np.argsort(ep_c.evalues_primary.real)
+    print(ep_c.evalues_index[total_trunc_sort])
+    plt.plot(np.abs(ep_c.evalues[trunc_sort].real-ep_c.evalues_primary[total_trunc_sort].real[:len(trunc_sort)]), label='kept modes', marker='o')
+    # plt.semilogy(true_evals, label='true')
+    # plt.semilogy(ep_c.evalues_primary[total_trunc_sort].real, label='all modes')
+    # plt.legend()
+    plt.xlim(0,60)
+    plt.xlabel("sort order")
+    plt.ylabel("value")
+    plt.tight_layout()
+    plt.savefig("evalus_trunc_errors.png",dpi=300)
+
+    index = total_trunc_sort[58]
+    plot_mode(ep_c,index, ep_c.evalues_index[index])
