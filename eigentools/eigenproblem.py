@@ -19,7 +19,7 @@ ResidualPair = namedtuple('ResidualPair', ['tau','var'])
 
 
 class Eigenproblem():
-    def __init__(self, EVP, reject='tau', tau_residual_pairs = None, EVP_secondary=None, scales=1, rejection_tolerance=1e-6, drift_threshold=1e6, use_ordinal=False, grow_func=lambda x: x.real, freq_func=lambda x: x.imag):
+    def __init__(self, EVP, ncc_cutoff=1e-6, reject='tau', tau_residual_pairs = None, EVP_secondary=None, scales=1, rejection_tolerance=1e-6, drift_threshold=1e6, use_ordinal=False, grow_func=lambda x: x.real, freq_func=lambda x: x.imag):
         """An object for feature-rich eigenvalue analysis.
 
         Eigenproblem provides support for common tasks in eigenvalue
@@ -93,7 +93,6 @@ class Eigenproblem():
             self.rejection_tolerance = rejection_tolerance
         elif self.reject is not None:
             raise ValueError(f"{reject} is not a supported rejection method. Supported methods are tau, distance, and None")
-        
         self.evalues = None
         self.evalues_primary = None
         self.evalues_secondary = None
@@ -161,6 +160,7 @@ class Eigenproblem():
         self.evalues_primary = self.solver.eigenvalues
 
         if self.reject == 'distance':
+            logger.info("Running secondary solver")
             self._run_solver(self.solver_secondary, sparse)
             self.evalues_secondary = self.solver_secondary.eigenvalues
         self.reject_spurious()
@@ -174,10 +174,14 @@ class Eigenproblem():
         sparse : bool
             If True, use sparse solver; otherwise use dense.
         """
+        if type(self.subproblem) is tuple:
+            sp =  solver.subproblems_by_group[self.subproblem]
+        elif type(self.subproblem) is int:
+            sp = solver.subproblems[self.subproblem]
         if sparse:
-            solver.solve_sparse(solver.subproblems[self.subproblem], rebuild_matrices=True, N=self.N, target=self.target, **self.solver_kwargs)
+            solver.solve_sparse(sp, rebuild_matrices=True, N=self.N, target=self.target, **self.solver_kwargs)
         else:
-            solver.solve_dense(solver.subproblems[self.subproblem], rebuild_matrices=True)
+            solver.solve_dense(sp, rebuild_matrices=True)
 
     def _set_eigenmode(self, index, all_modes=False):
         """use EVP solver's set_state to access eigenmode in grid or coefficient space
@@ -485,13 +489,18 @@ class Eigenproblem():
         if not hasattr(self.solver.eigenvalue_subproblem, '_input_buffer'):
             self.solver.eigenvalue_subproblem._build_buffers()
         for f in self.solver.state:
+            logger.debug(f"field name: {f.name}")
             f_index = self._select_field(f.name)
             f_evec = self.solver.eigenvectors[f_index,:]
-            retained_index &= (np.abs(f_evec[-1]) < self.rejection_tolerance)
-            if len(f_evec) != 1:
-                retained_index &= (np.abs(f_evec[-2]) < self.rejection_tolerance)
-                retained_index &= (np.abs(f_evec[-3]) < self.rejection_tolerance)
-                retained_index &= (np.abs(f_evec[-4]) < self.rejection_tolerance)
+            try:
+                retained_index &= (np.abs(f_evec[-1]) < self.rejection_tolerance)
+                if len(f_evec) != 1:
+                    retained_index &= (np.abs(f_evec[-2]) < self.rejection_tolerance)
+                    #retained_index &= (np.abs(f_evec[-3]) < self.rejection_tolerance)
+                    #retained_index &= (np.abs(f_evec[-4]) < self.rejection_tolerance)
+            except IndexError:
+                print(f"field name: {f.name} skipped")
+
         evg = self.solver.eigenvalues[retained_index]
         indices = np.arange(len(self.solver.eigenvalues),dtype=int)
         return evg, indices[retained_index]
@@ -677,43 +686,6 @@ class Eigenproblem():
         self.evalues_good = evg
         self.evalues_index = indx
         self.evalues = self.evalues_good
-
-    def _build_hires(self):
-        """builds a high-resolution EVP from the EVP passed in at
-        construction
-
-        """
-        old_evp = self.EVP
-        old_x = old_evp.dist.bases[0]
-
-        x = tools.basis_from_basis(old_x, self.factor)
-        d = old_evp.dist
-        self.EVP_hires = de.EVP(old_evp.variables,old_evp.eigenvalue, ncc_cutoff=old_evp.ncc_kw['cutoff'], max_ncc_terms=old_evp.ncc_kw['max_terms'], tolerance=self.EVP.tol)
-
-        for k,v in old_evp.substitutions.items():
-            self.EVP_hires.substitutions[k] = v
-
-        for k,v in old_evp.parameters.items():
-            if type(v) == Field: #NCCs
-                new_field = d.new_field()
-                v.set_scales(self.factor, keep_data=True)
-                new_field['g'] = v['g']
-                self.EVP_hires.parameters[k] = new_field
-            else: #scalars
-                self.EVP_hires.parameters[k] = v
-
-        for e in old_evp.equations:
-            self.EVP_hires.add_equation(e['raw_equation'])
-
-        try:
-            for b in old_evp.boundary_conditions:
-                self.EVP_hires.add_bc(b['raw_equation'])
-        except AttributeError:
-            # after version befc23584fea, Dedalus no longer
-            # distingishes BCs from other equations
-            pass
-
-        self.hires_solver = self.EVP_hires.build_solver()
 
     def _compute_eigenvalue_deltas(self):
         """Computes delta between two sets of eigenvalues("primary" and "secondary"), using
