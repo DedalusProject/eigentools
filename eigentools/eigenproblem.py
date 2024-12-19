@@ -181,7 +181,7 @@ class Eigenproblem():
         if sparse:
             solver.solve_sparse(sp, rebuild_matrices=True, N=self.N, target=self.target, **self.solver_kwargs)
         else:
-            solver.solve_dense(sp, rebuild_matrices=True)
+            solver.solve_dense(sp, rebuild_matrices=True, **self.solver_kwargs)
 
     def _set_eigenmode(self, index, all_modes=False):
         """use EVP solver's set_state to access eigenmode in grid or coefficient space
