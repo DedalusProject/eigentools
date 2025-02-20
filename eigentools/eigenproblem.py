@@ -19,7 +19,7 @@ ResidualPair = namedtuple('ResidualPair', ['tau','var'])
 
 
 class Eigenproblem():
-    def __init__(self, EVP, ncc_cutoff=1e-6, reject='tau', tau_residual_pairs = None, EVP_secondary=None, scales=1, rejection_tolerance=1e-6, drift_threshold=1e6, use_ordinal=False, grow_func=lambda x: x.real, freq_func=lambda x: x.imag):
+    def __init__(self, EVP, ncc_cutoff=1e-6, reject='tau', tau_residual_pairs = None, EVP_secondary=None, scales=1, rejection_tolerance=1e-6, use_ordinal=False, grow_func=lambda x: x.real, freq_func=lambda x: x.imag):
         """An object for feature-rich eigenvalue analysis.
 
         Eigenproblem provides support for common tasks in eigenvalue
@@ -75,12 +75,14 @@ class Eigenproblem():
         """
         self.EVP = EVP
         self.reject = reject
-        self.solver = EVP.build_solver()
+        if self.EVP:
+            self.solver = EVP.build_solver(ncc_cutoff=ncc_cutoff)
         self.EVP_secondary = EVP_secondary
         if self.reject == 'distance':
             if not EVP_secondary:
-                raise ValueError("Distance rejection method requires second EVP object")
-            self.solver_secondary = self.EVP_secondary.build_solver()
+                logger.warning("Solving using distance rejection method requires second EVP object.")
+            else:
+                self.solver_secondary = self.EVP_secondary.build_solver(ncc_cutoff=ncc_cutoff)
         elif self.reject == 'tau':
             if not tau_residual_pairs:
                 raise ValueError("Tau rejection method requires at least one (tau, var) pair.")
@@ -88,9 +90,9 @@ class Eigenproblem():
                 self.tau_residual_pairs = (tau_residual_pairs,)
             else:
                 self.tau_residual_pairs = tau_residual_pairs
-            self.rejection_tolerance = rejection_tolerance
+            
         elif self.reject == 'truncation':
-            self.rejection_tolerance = rejection_tolerance
+            pass
         elif self.reject is not None:
             raise ValueError(f"{reject} is not a supported rejection method. Supported methods are tau, distance, and None")
         self.evalues = None
@@ -100,7 +102,7 @@ class Eigenproblem():
         self.ps_real = None
         self.ps_imag = None
 
-        self.drift_threshold = drift_threshold
+        self.rejection_tolerance = rejection_tolerance
         self.use_ordinal = use_ordinal
         self.scales = scales
         self.grow_func = grow_func
@@ -485,6 +487,11 @@ class Eigenproblem():
         return field_index
 
     def _compute_truncation_errors(self, tolerance=None):
+        if tolerance:
+            rel_tol = tolerance
+        else:
+            rel_tol = self.rejection_tolerance
+
         retained_index = np.ones(len(self.solver.eigenvalues), dtype=bool)
         if not hasattr(self.solver.eigenvalue_subproblem, '_input_buffer'):
             self.solver.eigenvalue_subproblem._build_buffers()
@@ -493,11 +500,11 @@ class Eigenproblem():
             f_index = self._select_field(f.name)
             f_evec = self.solver.eigenvectors[f_index,:]
             try:
-                retained_index &= (np.abs(f_evec[-1]) < self.rejection_tolerance)
+                retained_index &= (np.abs(f_evec[-1]) < rel_tol)
                 if len(f_evec) != 1:
-                    retained_index &= (np.abs(f_evec[-2]) < self.rejection_tolerance)
-                    #retained_index &= (np.abs(f_evec[-3]) < self.rejection_tolerance)
-                    #retained_index &= (np.abs(f_evec[-4]) < self.rejection_tolerance)
+                    retained_index &= (np.abs(f_evec[-2]) < rel_tol)
+                    #retained_index &= (np.abs(f_evec[-3]) < rel_tol)
+                    #retained_index &= (np.abs(f_evec[-4]) < rel_tol)
             except IndexError:
                 print(f"field name: {f.name} skipped")
 
@@ -680,14 +687,14 @@ class Eigenproblem():
         elif self.reject == 'tau':
             evg, indx = self._compute_tau_errors(tolerance=tolerance)
         elif self.reject == 'distance':
-            evg, indx = self._compute_eigenvalue_deltas()
+            evg, indx = self._compute_eigenvalue_deltas(tolerance=tolerance)
         elif self.reject == 'truncation':
-            evg, indx = self._compute_truncation_errors()
+            evg, indx = self._compute_truncation_errors(tolerance=tolerance)
         self.evalues_good = evg
         self.evalues_index = indx
         self.evalues = self.evalues_good
 
-    def _compute_eigenvalue_deltas(self):
+    def _compute_eigenvalue_deltas(self, tolerance=None):
         """Computes delta between two sets of eigenvalues("primary" and "secondary"), using
         either "ordinal" or "nearist" via the algorithm described in
         Boyd chapter 7.
@@ -696,6 +703,13 @@ class Eigenproblem():
 
         returns "good" eigenvalues and indices into the primary set of eigenvalues.
         """
+        logger.info("Computing eigenvalue deltas")
+        if tolerance:
+            rel_tol = tolerance
+        else:
+            rel_tol = self.rejection_tolerance
+
+
         eval_low = self.evalues_primary
         eval_hi = self.evalues_secondary
 
@@ -732,12 +746,12 @@ class Eigenproblem():
         # Nearest delta
         self.delta_near = np.array([np.nanmin(np.abs(eval_low_sorted[j] - eval_hi_sorted)/sigmas[j]) for j in range(len(eval_low_sorted))])
 
-        # Discard eigenvalues with 1/delta_near < drift_threshold
+        # Keep eigenvalues with delta_near < rel_tol
         if self.use_ordinal:
-            inverse_drift = 1/self.delta_ordinal
+            drift = self.delta_ordinal
         else:
-            inverse_drift = 1/self.delta_near
-        eval_low_and_indx = eval_low_and_indx[np.where(inverse_drift > self.drift_threshold)]
+            drift = self.delta_near
+        eval_low_and_indx = eval_low_and_indx[np.where(drift < rel_tol)]
 
         eval_low = eval_low_and_indx[:, 0]
         indx = eval_low_and_indx[:, 1].real.astype(int)
@@ -745,9 +759,9 @@ class Eigenproblem():
         return eval_low, indx
 
     def plot_drift_ratios(self, axes=None):
-        """Plot drift ratios (both ordinal and nearest) vs. mode number.
+        """Plot inverse drift ratios (both ordinal and nearest) vs. mode number.
 
-        The drift ratios give a measure of how good a given eigenmode is;
+        The inverse drift ratios give a measure of how good a given eigenmode is;
         this can help set thresholds.
 
         Returns
@@ -770,11 +784,12 @@ class Eigenproblem():
         ax.semilogy(mode_numbers,1/self.delta_ordinal,'x',alpha=0.4)
 
         ax.set_prop_cycle(None)
-        good_near = 1/self.delta_near > self.drift_threshold
-        good_ordinal = 1/self.delta_ordinal > self.drift_threshold
+        inverse_tolerance = 1/self.rejection_tolerance
+        good_near = 1/self.delta_near > inverse_tolerance
+        good_ordinal = 1/self.delta_ordinal > inverse_tolerance
         ax.semilogy(mode_numbers[good_near],1/self.delta_near[good_near],'o', label='nearest')
         ax.semilogy(mode_numbers[good_ordinal],1/self.delta_ordinal[good_ordinal],'x',label='ordinal')
-        ax.axhline(self.drift_threshold,alpha=0.4, color='black')
+        ax.axhline(inverse_tolerance,alpha=0.4, color='black')
         ax.set_xlabel("mode number")
         ax.set_ylabel(r"$1/\delta$")
         ax.legend()
