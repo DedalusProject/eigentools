@@ -267,7 +267,7 @@ class CriticalFinder:
             logger.warning('Optimize results not fully converged, returning crit_finder results.')
             return guess
 
-    def plot_crit(self, axes=None, transpose=False, xlabel = None, ylabel = None, zlabel="growth rate", cmap="viridis"):
+    def plot_crit(self, axes=None, transpose=False, xlabel = None, ylabel = None, zlabel="growth rate", cmap="viridis", vmin=None, vmax=None, log=False):
         """Create a 2D colormap of the grid of growth rates.  
 
         If available, the root values that have been found will be plotted
@@ -307,6 +307,10 @@ class CriticalFinder:
             grid = self.evalue_grid.real
         # Plot colormap, only plot 2 stdevs off zero
         biggest_val = 2*np.abs(grid).std()
+        if not vmin:
+            vmin = -biggest_val
+        if not vmax:
+            vmax = biggest_val
 
         # Setup axes
         # Bounds (left, bottom, width, height) relative-to-axes
@@ -320,7 +324,7 @@ class CriticalFinder:
         pax = ax.figure.add_axes(pbbox)
         cax = ax.figure.add_axes(cbbox)
 
-        plot = pax.pcolormesh(xx,yy,grid,cmap=cmap,vmin=-biggest_val,vmax=biggest_val)
+        plot = pax.pcolormesh(xx,yy,grid,cmap=cmap,vmin=vmin,vmax=vmax)
         ax.axis('off')
         cbar = plt.colorbar(plot, cax=cax, label=zlabel, orientation='horizontal')
         cbar.outline.set_visible(False)
@@ -350,5 +354,7 @@ class CriticalFinder:
             ylabel = self.param_names[1]
         pax.set_xlabel(xlabel)
         pax.set_ylabel(ylabel)
-        
+        if log:
+            pax.set_xscale('log')
+            pax.set_yscale('log')
         return pax,cax

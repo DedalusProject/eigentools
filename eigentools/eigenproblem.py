@@ -80,7 +80,8 @@ class Eigenproblem():
         self.EVP_secondary = EVP_secondary
         if self.reject == 'distance':
             if not EVP_secondary:
-                logger.warning("Solving using distance rejection method requires second EVP object.")
+                pass
+                #logger.warning("Solving using distance rejection method requires second EVP object.")
             else:
                 self.solver_secondary = self.EVP_secondary.build_solver(ncc_cutoff=ncc_cutoff)
         elif self.reject == 'tau':
